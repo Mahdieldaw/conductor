@@ -1,5 +1,7 @@
 // src/background/service-worker.js
-import { MESSAGE_TYPES } from '@hybrid-thinking/messaging';
+
+// FIX #1: Import the individual constants directly
+import { PING, EXECUTE_PROMPT, GET_AVAILABLE_TABS } from '@hybrid-thinking/messaging';
 
 // Tab Registry to track open LLM tabs
 class TabRegistry {
@@ -9,11 +11,32 @@ class TabRegistry {
 
   addTab(tabId, url) {
     const hostname = new URL(url).hostname;
-    this.tabs.set(tabId, { url, hostname, lastActivity: Date.now() });
+    // Only track supported hostnames
+    if (this.isSupportedHostname(hostname)) {
+      const platformKey = this.getPlatformKey(hostname);
+      this.tabs.set(tabId, { url, hostname, platformKey, lastActivity: Date.now() });
+      console.log(`TabRegistry: Added/Updated tab ${tabId} for platform ${platformKey}`);
+    }
   }
 
   removeTab(tabId) {
-    this.tabs.delete(tabId);
+    if (this.tabs.has(tabId)) {
+      this.tabs.delete(tabId);
+      console.log(`TabRegistry: Removed tab ${tabId}`);
+    }
+  }
+  
+  isSupportedHostname(hostname) {
+    return hostname.includes('chatgpt.com') || 
+           hostname.includes('chat.openai.com') || 
+           hostname.includes('claude.ai') || 
+           hostname.includes('console.anthropic.com');
+  }
+  
+  getPlatformKey(hostname) {
+    if (hostname.includes('chatgpt') || hostname.includes('openai')) return 'chatgpt';
+    if (hostname.includes('claude') || hostname.includes('anthropic')) return 'claude';
+    return 'unknown';
   }
 
   getTab(tabId) {
@@ -27,9 +50,9 @@ class TabRegistry {
     }));
   }
 
-  findTabByHostname(hostname) {
+  findTabByPlatform(platformKey) {
     for (const [tabId, info] of this.tabs.entries()) {
-      if (info.hostname.includes(hostname)) {
+      if (info.platformKey === platformKey) {
         return { tabId, ...info };
       }
     }
@@ -39,17 +62,17 @@ class TabRegistry {
 
 const tabRegistry = new TabRegistry();
 
+// Initialize registry on startup
+chrome.tabs.query({}, (tabs) => {
+    tabs.forEach(tab => {
+        if(tab.url) tabRegistry.addTab(tab.id, tab.url);
+    });
+});
+
 // Listen for tab updates to maintain registry
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
-    const hostname = new URL(tab.url).hostname;
-    // Only track LLM websites
-    if (hostname.includes('chatgpt.com') || 
-        hostname.includes('chat.openai.com') || 
-        hostname.includes('claude.ai') || 
-        hostname.includes('console.anthropic.com')) {
-      tabRegistry.addTab(tabId, tab.url);
-    }
+    tabRegistry.addTab(tabId, tab.url);
   }
 });
 
@@ -59,138 +82,70 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 // Handle messages from the web app
-chrome.runtime.onMessageExternal.addListener(async (message, sender, sendResponse) => {
-  try {
-    switch (message.type) {
-      case MESSAGE_TYPES.EXECUTE_PROMPT:
-        const result = await handleExecutePrompt(message.payload);
-        sendResponse({ success: true, data: result });
-        break;
-        
-      case MESSAGE_TYPES.GET_AVAILABLE_TABS:
-        const tabs = tabRegistry.getAllTabs();
-        sendResponse({ success: true, data: tabs });
-        break;
-        
-      case MESSAGE_TYPES.PING:
-        sendResponse({ success: true, data: 'pong' });
-        break;
-        
-      default:
-        sendResponse({ success: false, error: 'Unknown message type' });
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  const handleAsync = async () => {
+    try {
+      // FIX #2: Use the constants directly instead of from an object
+      switch (message.type) {
+        case EXECUTE_PROMPT:
+          const result = await handleExecutePrompt(message.payload);
+          sendResponse({ success: true, data: result });
+          break;
+          
+        case GET_AVAILABLE_TABS:
+          const tabs = tabRegistry.getAllTabs();
+          sendResponse({ success: true, data: tabs });
+          break;
+          
+        case PING:
+          sendResponse({ success: true, data: 'pong' });
+          break;
+          
+        default:
+          sendResponse({ success: false, error: 'Unknown message type' });
+      }
+    } catch (error) {
+      console.error('Sidecar Error:', error);
+      sendResponse({ success: false, error: error.message });
     }
-  } catch (error) {
-    console.error('Error handling message:', error);
-    sendResponse({ success: false, error: error.message });
   }
-  
+  handleAsync();
   return true; // Keep the message channel open for async response
 });
 
-// Core function to execute prompts on LLM tabs
-async function handleExecutePrompt({ prompt, targetHostname, tabId }) {
-  let targetTab;
-  
-  if (tabId) {
-    // Use specific tab if provided
-    targetTab = tabRegistry.getTab(tabId);
-    if (!targetTab) {
-      throw new Error(`Tab ${tabId} not found in registry`);
-    }
-  } else if (targetHostname) {
-    // Find tab by hostname
-    targetTab = tabRegistry.findTabByHostname(targetHostname);
-    if (!targetTab) {
-      throw new Error(`No tab found for hostname: ${targetHostname}`);
-    }
-  } else {
-    throw new Error('Either tabId or targetHostname must be provided');
+// Core function to execute prompts and harvest response
+async function handleExecutePrompt({ prompt, platform }) {
+  const targetTab = tabRegistry.findTabByPlatform(platform);
+  if (!targetTab) {
+    throw new Error(`No active tab found for platform: ${platform}. Please open the corresponding website.`);
   }
 
-  // Execute the broadcast function in the content script
+  const tabId = targetTab.tabId;
+
+  // 1. Execute the broadcast function in the content script
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (promptToBroadcast) => window.sidecar.broadcast(promptToBroadcast),
+    args: [prompt]
+  });
+
+  // 2. Execute the harvest function in the content script
   const results = await chrome.scripting.executeScript({
-    target: { tabId: targetTab.tabId },
-    func: executeBroadcast,
-    args: [prompt, targetTab.hostname]
+    target: { tabId },
+    func: () => window.sidecar.harvest(),
   });
 
   if (!results || results.length === 0) {
-    throw new Error('Failed to execute script in target tab');
+    throw new Error('Failed to execute harvest script in target tab.');
   }
 
   const result = results[0].result;
-  if (result.error) {
+  if (result.error) { // The injected function itself returned an error
     throw new Error(result.error);
   }
 
-  return result.data;
+  return result; // The final harvested content
 }
 
-// Function that gets injected into the content script context
-function executeBroadcast(prompt, hostname) {
-  try {
-    if (!window.sidecar) {
-      return { error: 'Sidecar not initialized in this tab' };
-    }
-    
-    // Call the broadcast method exposed by content.js
-    return window.sidecar.broadcast(prompt, hostname)
-      .then(result => ({ data: result }))
-      .catch(error => ({ error: error.message }));
-  } catch (error) {
-    return { error: error.message };
-  }
-}
 
-// Function to harvest responses
-async function handleHarvestResponse({ tabId, targetHostname }) {
-  let targetTab;
-  
-  if (tabId) {
-    targetTab = tabRegistry.getTab(tabId);
-    if (!targetTab) {
-      throw new Error(`Tab ${tabId} not found in registry`);
-    }
-  } else if (targetHostname) {
-    targetTab = tabRegistry.findTabByHostname(targetHostname);
-    if (!targetTab) {
-      throw new Error(`No tab found for hostname: ${targetHostname}`);
-    }
-  } else {
-    throw new Error('Either tabId or targetHostname must be provided');
-  }
-
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: targetTab.tabId },
-    func: executeHarvest,
-    args: [targetTab.hostname]
-  });
-
-  if (!results || results.length === 0) {
-    throw new Error('Failed to execute harvest script in target tab');
-  }
-
-  const result = results[0].result;
-  if (result.error) {
-    throw new Error(result.error);
-  }
-
-  return result.data;
-}
-
-// Function that gets injected to harvest responses
-function executeHarvest(hostname) {
-  try {
-    if (!window.sidecar) {
-      return { error: 'Sidecar not initialized in this tab' };
-    }
-    
-    return window.sidecar.harvest(hostname)
-      .then(result => ({ data: result }))
-      .catch(error => ({ error: error.message }));
-  } catch (error) {
-    return { error: error.message };
-  }
-}
-
-console.log('Hybrid Thinking OS Sidecar Extension - Service Worker loaded');
+console.log('Hybrid Thinking OS Sidecar Extension - Service Worker loaded and ready.');

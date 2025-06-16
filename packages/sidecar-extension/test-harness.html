@@ -87,6 +87,27 @@
     </style>
 </head>
 <body>
+    <!--
+    INSTRUCTIONS: How to Run the Sidecar Extension Test Harness
+
+    1. Open a terminal and navigate to this directory:
+       cd c:\Users\Mahdi\projects\hybrid-thinking-os\packages\sidecar-extension
+
+    2. Start a local server using http-server:
+       npx http-server . -p 5174
+       (If prompted, allow it to install the http-server package.)
+
+    3. Open your browser and go to:
+       http://localhost:5174/test-harness.html
+
+    4. Get your extension ID:
+       - Go to chrome://extensions in Chrome.
+       - Find your loaded extension and copy its ID.
+
+    5. Paste the extension ID into the input field and click "Save" (or press Enter).
+
+    6. Use the test harness features to test your extension’s connection and functionality.
+    -->
     <div class="container">
         <h1>🤖 Hybrid Thinking OS - Sidecar Extension Test Harness</h1>
         
@@ -122,6 +143,15 @@
         </div>
 
         <div class="test-section">
+            <h3>⚙️ Configuration</h3>
+            <p>Go to <code>chrome://extensions</code>, find the loaded extension, and paste its ID below. This is saved locally.</p>
+            <input type="text" id="extensionIdInput" placeholder="Enter Extension ID here...">
+            <button id="saveExtensionIdBtn" type="button">Save</button>
+            <button id="autoDetectBtn" type="button">Auto-Detect Extension ID</button>
+            <div id="autoDetectResult" class="result"></div>
+        </div>
+
+        <div class="test-section">
             <h3>📝 Instructions</h3>
             <div class="info">
                 <strong>How to use this test harness:</strong><br>
@@ -137,6 +167,11 @@
     </div>
 
     <script>
+        const extensionIdInput = document.getElementById('extensionIdInput');
+        const saveExtensionIdBtn = document.getElementById('saveExtensionIdBtn');
+        const autoDetectBtn = document.getElementById('autoDetectBtn');
+        const autoDetectResult = document.getElementById('autoDetectResult');
+
         // Extension ID will be dynamically determined
         let extensionId = null;
 
@@ -269,6 +304,40 @@
                 }
             } catch (error) {
                 showResult('harvestResult', `❌ Error harvesting response: ${error.message}`, 'error');
+            }
+        }
+
+        // Load saved extension ID on page load
+        extensionIdInput.value = localStorage.getItem('sidecarExtensionId') || '';
+
+        saveExtensionIdBtn.onclick = function() {
+            const id = extensionIdInput.value.trim();
+            localStorage.setItem('sidecarExtensionId', id);
+            autoDetectResult.textContent = id ? `Extension ID saved: ${id}` : 'Extension ID cleared.';
+            autoDetectResult.className = id ? 'result success' : 'result info';
+        };
+
+        extensionIdInput.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                saveExtensionIdBtn.click();
+            }
+        });
+
+        autoDetectBtn.onclick = async function() {
+            autoDetectResult.textContent = 'Trying to auto-detect extension ID...';
+            autoDetectResult.className = 'result info';
+            try {
+                if (chrome && chrome.runtime && chrome.runtime.id) {
+                    extensionIdInput.value = chrome.runtime.id;
+                    localStorage.setItem('sidecarExtensionId', chrome.runtime.id);
+                    autoDetectResult.textContent = `Detected extension ID: ${chrome.runtime.id}`;
+                    autoDetectResult.className = 'result success';
+                } else {
+                    throw new Error('chrome.runtime.id is not available. This only works if loaded as an extension page.');
+                }
+            } catch (e) {
+                autoDetectResult.textContent = 'Could not auto-detect extension ID. Please copy it from chrome://extensions.';
+                autoDetectResult.className = 'result error';
             }
         }
 

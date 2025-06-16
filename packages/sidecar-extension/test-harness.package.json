@@ -1,0 +1,6 @@
+{
+  "name": "Serve Test Harness",
+  "scripts": {
+    "serve-test-harness": "npx serve . --single --listen 5174"
+  }
+}
