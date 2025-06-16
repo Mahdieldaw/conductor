@@ -1,0 +1,10 @@
+{
+  "name": "@hybrid-thinking/web-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"Error: no dev specified\" && exit 1",
+    "build": "echo \"Error: no build specified\" && exit 1",
+    "lint": "echo \"Error: no lint specified\" && exit 1"
+  }
+}

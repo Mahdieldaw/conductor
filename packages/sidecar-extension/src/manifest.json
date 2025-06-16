@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Hybrid Thinking OS Sidecar",
+  "version": "1.0.0",
+  "description": "Browser extension that acts as a local API to execute AI workflow steps on live LLM websites",
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.chatgpt.com/*",
+        "*://*.chat.openai.com/*",
+        "*://*.claude.ai/*",
+        "*://*.console.anthropic.com/*"
+      ],
+      "js": ["content/content.js"]
+    }
+  ],
+  "host_permissions": [
+    "*://*.chatgpt.com/*",
+    "*://*.chat.openai.com/*",
+    "*://*.claude.ai/*",
+    "*://*.console.anthropic.com/*"
+  ],
+  "permissions": [
+    "scripting",
+    "tabs",
+    "storage"
+  ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:*/*",
+      "https://localhost:*/*"
+    ]
+  }
+}

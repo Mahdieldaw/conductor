@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sidecar Extension Test Harness</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        button {
+            background-color: #007cba;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #005a87;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Hybrid Thinking OS - Sidecar Extension Test Harness</h1>
+        
+        <div class="test-section">
+            <h3>📡 Extension Connection Test</h3>
+            <p>Test if the sidecar extension is installed and responding.</p>
+            <button onclick="testConnection()">Test Connection</button>
+            <div id="connectionResult" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📋 Available Tabs</h3>
+            <p>Get list of available LLM tabs that the extension can control.</p>
+            <button onclick="getAvailableTabs()">Get Available Tabs</button>
+            <div id="tabsResult" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🚀 Execute Prompt Test</h3>
+            <p>Send a test prompt to an LLM tab.</p>
+            <input type="text" id="targetHostname" placeholder="Target hostname (e.g., chatgpt.com)" value="chatgpt.com">
+            <textarea id="testPrompt" placeholder="Enter your test prompt here...">Hello! This is a test message from the Hybrid Thinking OS sidecar extension. Please respond with a simple acknowledgment.</textarea>
+            <button onclick="executePrompt()">Execute Prompt</button>
+            <div id="promptResult" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📥 Harvest Response Test</h3>
+            <p>Harvest the latest response from an LLM tab.</p>
+            <input type="text" id="harvestHostname" placeholder="Target hostname (e.g., chatgpt.com)" value="chatgpt.com">
+            <button onclick="harvestResponse()">Harvest Response</button>
+            <div id="harvestResult" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📝 Instructions</h3>
+            <div class="info">
+                <strong>How to use this test harness:</strong><br>
+                1. Make sure you have built the extension: <code>pnpm build</code><br>
+                2. Load the extension in Chrome: Go to chrome://extensions/, enable Developer mode, click "Load unpacked", and select the <code>dist</code> folder<br>
+                3. Open ChatGPT or Claude in another tab<br>
+                4. Come back to this page and run the tests<br><br>
+                
+                <strong>Expected Extension ID:</strong> The extension should be loaded and have an ID assigned by Chrome.<br>
+                <strong>Externally Connectable:</strong> This page should be able to communicate with the extension via the manifest's externally_connectable configuration.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Extension ID will be dynamically determined
+        let extensionId = null;
+
+        // Try to detect the extension ID
+        async function detectExtensionId() {
+            // This is a placeholder - in a real scenario, you'd need to know the extension ID
+            // or have the extension communicate its ID somehow
+            return 'your-extension-id-here';
+        }
+
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `result ${type}`;
+        }
+
+        async function sendMessageToExtension(message) {
+            return new Promise((resolve, reject) => {
+                if (!extensionId) {
+                    reject(new Error('Extension ID not set. Please check if the extension is loaded.'));
+                    return;
+                }
+
+                chrome.runtime.sendMessage(extensionId, message, (response) => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                        resolve(response);
+                    }
+                });
+            });
+        }
+
+        async function testConnection() {
+            showResult('connectionResult', 'Testing connection...', 'info');
+            
+            try {
+                if (!extensionId) {
+                    extensionId = await detectExtensionId();
+                }
+                
+                const response = await sendMessageToExtension({
+                    type: 'PING'
+                });
+                
+                if (response && response.success) {
+                    showResult('connectionResult', `✅ Connection successful! Response: ${JSON.stringify(response.data)}`, 'success');
+                } else {
+                    showResult('connectionResult', `❌ Connection failed: ${JSON.stringify(response)}`, 'error');
+                }
+            } catch (error) {
+                showResult('connectionResult', `❌ Connection error: ${error.message}\n\nNote: Make sure the extension is loaded and this page is whitelisted in externally_connectable.`, 'error');
+            }
+        }
+
+        async function getAvailableTabs() {
+            showResult('tabsResult', 'Getting available tabs...', 'info');
+            
+            try {
+                const response = await sendMessageToExtension({
+                    type: 'GET_AVAILABLE_TABS'
+                });
+                
+                if (response && response.success) {
+                    const tabs = response.data;
+                    const tabsText = tabs.length > 0 
+                        ? `Found ${tabs.length} LLM tabs:\n${tabs.map(tab => `- Tab ${tab.tabId}: ${tab.hostname} (${tab.url})`).join('\n')}`
+                        : 'No LLM tabs found. Please open ChatGPT or Claude in another tab.';
+                    showResult('tabsResult', `✅ ${tabsText}`, 'success');
+                } else {
+                    showResult('tabsResult', `❌ Failed to get tabs: ${JSON.stringify(response)}`, 'error');
+                }
+            } catch (error) {
+                showResult('tabsResult', `❌ Error getting tabs: ${error.message}`, 'error');
+            }
+        }
+
+        async function executePrompt() {
+            const hostname = document.getElementById('targetHostname').value;
+            const prompt = document.getElementById('testPrompt').value;
+            
+            if (!hostname || !prompt) {
+                showResult('promptResult', '❌ Please enter both hostname and prompt', 'error');
+                return;
+            }
+            
+            showResult('promptResult', 'Executing prompt...', 'info');
+            
+            try {
+                const response = await sendMessageToExtension({
+                    type: 'EXECUTE_PROMPT',
+                    payload: {
+                        prompt: prompt,
+                        targetHostname: hostname
+                    }
+                });
+                
+                if (response && response.success) {
+                    showResult('promptResult', `✅ Prompt executed successfully: ${response.data}`, 'success');
+                } else {
+                    showResult('promptResult', `❌ Failed to execute prompt: ${JSON.stringify(response)}`, 'error');
+                }
+            } catch (error) {
+                showResult('promptResult', `❌ Error executing prompt: ${error.message}`, 'error');
+            }
+        }
+
+        async function harvestResponse() {
+            const hostname = document.getElementById('harvestHostname').value;
+            
+            if (!hostname) {
+                showResult('harvestResult', '❌ Please enter hostname', 'error');
+                return;
+            }
+            
+            showResult('harvestResult', 'Harvesting response...', 'info');
+            
+            try {
+                const response = await sendMessageToExtension({
+                    type: 'HARVEST_RESPONSE',
+                    payload: {
+                        targetHostname: hostname
+                    }
+                });
+                
+                if (response && response.success) {
+                    showResult('harvestResult', `✅ Response harvested:\n\n${response.data}`, 'success');
+                } else {
+                    showResult('harvestResult', `❌ Failed to harvest response: ${JSON.stringify(response)}`, 'error');
+                }
+            } catch (error) {
+                showResult('harvestResult', `❌ Error harvesting response: ${error.message}`, 'error');
+            }
+        }
+
+        // Show initial instructions
+        showResult('connectionResult', 'Click "Test Connection" to verify the extension is loaded and responding.', 'info');
+        showResult('tabsResult', 'Click "Get Available Tabs" to see which LLM tabs are available.', 'info');
+        showResult('promptResult', 'Enter a hostname and prompt, then click "Execute Prompt" to test.', 'info');
+        showResult('harvestResult', 'Enter a hostname and click "Harvest Response" to test response harvesting.', 'info');
+    </script>
+</body>
+</html>

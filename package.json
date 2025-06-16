@@ -1,0 +1,17 @@
+{
+  "name": "hybrid-thinking-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The root of the Hybrid Thinking OS pnpm monorepo.",
+  "packageManager": "pnpm@9.1.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "format": "prettier --write \"packages/**/*.{js,ts,json,svelte,css,md}\"",
+    "clean": "pnpm -r exec rm -rf node_modules && pnpm -r exec rm -rf .turbo && pnpm -r exec rm -rf dist"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5"
+  }
+}
