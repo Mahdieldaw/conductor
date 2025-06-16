@@ -1,4 +1,4 @@
-# Hybrid Thinking OS
+\# Hybrid Thinking OS
 
 A system composed of two primary components:
 
