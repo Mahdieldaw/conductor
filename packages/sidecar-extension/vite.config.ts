@@ -1,6 +1,6 @@
 // packages/sidecar-extension/vite.config.ts
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import react from '@vitejs/plugin-react-swc';
 import { resolve } from 'path';
 import webExtension from 'vite-plugin-web-extension';
 
@@ -30,11 +30,11 @@ export default defineConfig({
   build: {
     // We are not building a standard web app
     lib: {
-      // Define the entry points for the extension's scripts
-      entry: {
-        'background/service-worker': resolve(__dirname, 'src/background/service-worker.js'),
-        'content/content': resolve(__dirname, 'src/content/content.js'),
-      },
+      // Define the entry points for the extension's scripts as an array
+      entry: [
+        resolve(__dirname, 'src/background/service-worker.js'),
+        resolve(__dirname, 'src/content/content.js')
+      ],
       // The output format should be 'es' for modern extensions
       formats: ['es'],
     },
