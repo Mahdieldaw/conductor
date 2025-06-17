@@ -10,10 +10,10 @@ const sidecarAPI = {
   /**
    * Broadcast a prompt to the current LLM interface
    * @param {string} prompt - The prompt to send
-   * @param {string} hostname - The hostname of the current page
    * @returns {Promise<string>} - Success message
    */
-  async broadcast(prompt, hostname) {
+  async broadcast(prompt) {
+    const hostname = window.location.hostname; // <-- FIX: Get hostname from window context
     try {
       console.log(`[Sidecar] Broadcasting prompt to ${hostname}:`, prompt);
       
@@ -30,10 +30,10 @@ const sidecarAPI = {
 
   /**
    * Harvest the response from the current LLM interface
-   * @param {string} hostname - The hostname of the current page
    * @returns {Promise<string>} - The harvested response
    */
-  async harvest(hostname) {
+  async harvest() {
+    const hostname = window.location.hostname; // <-- FIX: Get hostname from window context
     try {
       console.log(`[Sidecar] Harvesting response from ${hostname}`);
       

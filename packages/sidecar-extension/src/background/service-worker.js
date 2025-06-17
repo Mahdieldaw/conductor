@@ -1,8 +1,5 @@
 // src/background/service-worker.js
 
-// FIX #1: Import the individual constants directly
-import { PING, EXECUTE_PROMPT, GET_AVAILABLE_TABS } from '@hybrid-thinking/messaging';
-
 // Tab Registry to track open LLM tabs
 class TabRegistry {
   constructor() {
@@ -11,9 +8,9 @@ class TabRegistry {
 
   addTab(tabId, url) {
     const hostname = new URL(url).hostname;
-    // Only track supported hostnames
     if (this.isSupportedHostname(hostname)) {
-      const platformKey = this.getPlatformKey(hostname);
+      // THE FIX: getPlatformKey is already correct. No more .toLowerCase() needed.
+      const platformKey = this.getPlatformKey(hostname); 
       this.tabs.set(tabId, { url, hostname, platformKey, lastActivity: Date.now() });
       console.log(`TabRegistry: Added/Updated tab ${tabId} for platform ${platformKey}`);
     }
@@ -34,6 +31,7 @@ class TabRegistry {
   }
   
   getPlatformKey(hostname) {
+    if (!hostname) return 'unknown';
     if (hostname.includes('chatgpt') || hostname.includes('openai')) return 'chatgpt';
     if (hostname.includes('claude') || hostname.includes('anthropic')) return 'claude';
     return 'unknown';
@@ -51,6 +49,7 @@ class TabRegistry {
   }
 
   findTabByPlatform(platformKey) {
+    // THE FIX: Remove the internal conversion. Trust the caller to provide a clean key.
     for (const [tabId, info] of this.tabs.entries()) {
       if (info.platformKey === platformKey) {
         return { tabId, ...info };
@@ -85,24 +84,33 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
   const handleAsync = async () => {
     try {
-      // FIX #2: Use the constants directly instead of from an object
       switch (message.type) {
-        case EXECUTE_PROMPT:
+        case 'EXECUTE_PROMPT':
           const result = await handleExecutePrompt(message.payload);
           sendResponse({ success: true, data: result });
           break;
+        
+        case 'HARVEST_RESPONSE':
+          const harvestResult = await handleHarvestResponse(message.payload);
+          sendResponse({ success: true, data: harvestResult });
+          break;
           
-        case GET_AVAILABLE_TABS:
+        case 'BROADCAST_PROMPT':
+          const broadcastResult = await handleBroadcastPrompt(message.payload);
+          sendResponse({ success: true, data: broadcastResult });
+          break;
+
+        case 'GET_AVAILABLE_TABS':
           const tabs = tabRegistry.getAllTabs();
           sendResponse({ success: true, data: tabs });
           break;
           
-        case PING:
+        case 'PING':
           sendResponse({ success: true, data: 'pong' });
           break;
           
         default:
-          sendResponse({ success: false, error: 'Unknown message type' });
+          sendResponse({ success: false, error: `Unknown message type: ${message.type}` });
       }
     } catch (error) {
       console.error('Sidecar Error:', error);
@@ -113,42 +121,68 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
   return true; // Keep the message channel open for async response
 });
 
-// Core function to execute prompts and harvest response
+// This function remains the "atomic" one for executing a prompt and harvesting the result.
 async function handleExecutePrompt({ prompt, platform }) {
-  const targetTab = tabRegistry.findTabByPlatform(platform);
+  // THE FIX: Convert to lowercase here, and ONLY here.
+  const platformKey = platform.toLowerCase();
+  const targetTab = tabRegistry.findTabByPlatform(platformKey);
   if (!targetTab) {
-    throw new Error(`No active tab found for platform: ${platform}. Please open the corresponding website.`);
+    throw new Error(`No active tab for platform: ${platform}`);
   }
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: targetTab.tabId },
+    func: async (promptToExecute) => {
+      if (!window.sidecar) throw new Error('Sidecar API not found on page.');
+      await window.sidecar.broadcast(promptToExecute);
+      return await window.sidecar.harvest();
+    },
+    args: [prompt],
+  });
+  if (!results || !results[0]) throw new Error('Script execution failed in target tab.');
+  if (results[0].error) throw new Error(`Content script error: ${results[0].error.message}`);
+  if (results[0].result === null || results[0].result === undefined) throw new Error('Content script returned a null or undefined result.');
+  return results[0].result;
+}
 
-  const tabId = targetTab.tabId;
+// This new function handles harvesting a response independently.
+async function handleHarvestResponse({ platform }) {
+  if (!platform) {
+    throw new Error("Payload must include 'platform'.");
+  }
+  // THE FIX: Convert to lowercase here, and ONLY here.
+  const platformKey = platform.toLowerCase();
+  const targetTab = tabRegistry.findTabByPlatform(platformKey);
+  if (!targetTab) {
+    throw new Error(`No active tab for platform: ${platform}`);
+  }
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: targetTab.tabId },
+    func: () => window.sidecar.harvest(),
+  });
+  if (!results || !results[0]) throw new Error('Script execution failed.');
+  if (results[0].error) throw new Error(`Content script error: ${results[0].error.message}`);
+  if (results[0].result === null || results[0].result === undefined) throw new Error('Content script returned null/undefined.');
+  return results[0].result;
+}
 
-  // 1. Execute the broadcast function in the content script
-  await chrome.scripting.executeScript({
-    target: { tabId },
+// Add the new handler function:
+async function handleBroadcastPrompt({ prompt, platform }) {
+  if (!platform) {
+    throw new Error("Payload must include 'platform'.");
+  }
+  const platformKey = platform.toLowerCase();
+  const targetTab = tabRegistry.findTabByPlatform(platformKey);
+  if (!targetTab) {
+    throw new Error(`No active tab for platform: ${platform}`);
+  }
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: targetTab.tabId },
     func: (promptToBroadcast) => window.sidecar.broadcast(promptToBroadcast),
     args: [prompt]
   });
-
-  // 2. Execute the harvest function in the content script
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => window.sidecar.harvest(),
-  });
-
-  if (!results || results.length === 0) {
-    throw new Error('Failed to execute harvest script in target tab.');
-  }
-
-  const result = results[0].result;
-  if (!result) {
-    throw new Error('No result returned from content script.');
-  }
-  if (result.error) { // The injected function itself returned an error
-    throw new Error(result.error);
-  }
-
-  return result; // The final harvested content
+  if (!results || !results[0]) throw new Error('Script execution failed for broadcast.');
+  if (results[0].error) throw new Error(`Content script error during broadcast: ${results[0].error.message}`);
+  return "Prompt broadcasted successfully.";
 }
-
 
 console.log('Hybrid Thinking OS Sidecar Extension - Service Worker loaded and ready.');

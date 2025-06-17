@@ -126,25 +126,18 @@
         </div>
 
         <div class="test-section">
-            <h3>🚀 Execute Prompt Test</h3>
-            <p>Send a test prompt to an LLM tab.</p>
+            <h3>🚀 Execute Prompt / Harvest Response Test</h3>
+            <p>Select a platform, enter a prompt, and run.</p>
             <label for="platformSelect">Platform:</label>
             <select id="platformSelect">
                 <option value="chatgpt">ChatGPT</option>
                 <option value="claude">Claude</option>
             </select>
-            <input type="text" id="targetHostname" placeholder="Target hostname (e.g., chatgpt.com)" value="chatgpt.com">
-            <textarea id="testPrompt" placeholder="Enter your test prompt here...">Hello! This is a test message from the Hybrid Thinking OS sidecar extension. Please respond with a simple acknowledgment.</textarea>
-            <button onclick="executePrompt()">Execute Prompt</button>
+            <textarea id="testPrompt">Hello from the Test Harness!</textarea>
+            <button onclick="executePrompt()">Execute Full Flow</button>
+            <button onclick="harvestResponse()">Harvest Only</button>
+            <button onclick="sendPromptOnly()">Send Prompt Only</button>
             <div id="promptResult" class="result"></div>
-        </div>
-
-        <div class="test-section">
-            <h3>📥 Harvest Response Test</h3>
-            <p>Harvest the latest response from an LLM tab.</p>
-            <input type="text" id="harvestHostname" placeholder="Target hostname (e.g., chatgpt.com)" value="chatgpt.com">
-            <button onclick="harvestResponse()">Harvest Response</button>
-            <div id="harvestResult" class="result"></div>
         </div>
 
         <div class="test-section">
@@ -249,58 +242,46 @@
         }
 
         async function executePrompt() {
-            const platform = document.getElementById('platformSelect').value;
-            const hostname = document.getElementById('targetHostname').value;
+            const platform = document.getElementById('platformSelect').value; // Get the simple key
             const prompt = document.getElementById('testPrompt').value;
-            if (!platform || !hostname || !prompt) {
-                showResult('promptResult', '❌ Please select a platform and enter both hostname and prompt', 'error');
-                return;
-            }
-            showResult('promptResult', 'Executing prompt...', 'info');
+            showResult('promptResult', `Executing prompt on ${platform}...`, 'info');
             try {
                 const response = await sendMessageToExtension({
                     type: 'EXECUTE_PROMPT',
-                    payload: {
-                        prompt: prompt,
-                        platform: platform,
-                        targetHostname: hostname
-                    }
+                    payload: { platform, prompt } // Only send the platform key
                 });
-                if (response && response.success) {
-                    showResult('promptResult', `✅ Prompt executed successfully: ${response.data}`, 'success');
-                } else {
-                    showResult('promptResult', `❌ Failed to execute prompt: ${JSON.stringify(response)}`, 'error');
-                }
+                showResult('promptResult', `✅ Success! Harvested response:\n\n${response.data}`, 'success');
             } catch (error) {
                 showResult('promptResult', `❌ Error executing prompt: ${error.message}`, 'error');
             }
         }
 
         async function harvestResponse() {
-            const hostname = document.getElementById('harvestHostname').value;
-            
-            if (!hostname) {
-                showResult('harvestResult', '❌ Please enter hostname', 'error');
-                return;
-            }
-            
-            showResult('harvestResult', 'Harvesting response...', 'info');
-            
+            const platform = document.getElementById('platformSelect').value; // Get the simple key
+            showResult('promptResult', `Harvesting response from ${platform}...`, 'info');
             try {
                 const response = await sendMessageToExtension({
                     type: 'HARVEST_RESPONSE',
-                    payload: {
-                        targetHostname: hostname
-                    }
+                    payload: { platform } // Only send the platform key
                 });
-                
-                if (response && response.success) {
-                    showResult('harvestResult', `✅ Response harvested:\n\n${response.data}`, 'success');
-                } else {
-                    showResult('harvestResult', `❌ Failed to harvest response: ${JSON.stringify(response)}`, 'error');
-                }
+                showResult('promptResult', `✅ Response harvested:\n\n${response.data}`, 'success');
             } catch (error) {
-                showResult('harvestResult', `❌ Error harvesting response: ${error.message}`, 'error');
+                showResult('promptResult', `❌ Error harvesting response: ${error.message}`, 'error');
+            }
+        }
+
+        async function sendPromptOnly() {
+            const platform = document.getElementById('platformSelect').value;
+            const prompt = document.getElementById('testPrompt').value;
+            showResult('promptResult', `Sending prompt to ${platform} (no harvest)...`, 'info');
+            try {
+                const response = await sendMessageToExtension({
+                    type: 'BROADCAST_PROMPT', // Use the new, explicit message type
+                    payload: { platform, prompt }
+                });
+                showResult('promptResult', `✅ Success: ${response.data}`, 'success');
+            } catch (error) {
+                showResult('promptResult', `❌ Error sending prompt: ${error.message}`, 'error');
             }
         }
 
@@ -341,8 +322,7 @@
         // Show initial instructions
         showResult('connectionResult', 'Click "Test Connection" to verify the extension is loaded and responding.', 'info');
         showResult('tabsResult', 'Click "Get Available Tabs" to see which LLM tabs are available.', 'info');
-        showResult('promptResult', 'Enter a hostname and prompt, then click "Execute Prompt" to test.', 'info');
-        showResult('harvestResult', 'Enter a hostname and click "Harvest Response" to test response harvesting.', 'info');
+        showResult('promptResult', 'Select a platform and prompt, then click "Execute Full Flow" or "Harvest Only" to test.', 'info');
     </script>
 </body>
 </html>

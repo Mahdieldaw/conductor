@@ -78,19 +78,20 @@ export class ContentStateDetector {
   }
 
   harvestClaude() {
-    // Get the latest Claude response
-    const messages = document.querySelectorAll('[data-is-streaming], .font-claude-message');
-    if (messages.length === 0) {
-      // Fallback: look for any message-like content
-      const messageContainers = document.querySelectorAll('div[class*="message"], div[class*="response"]');
-      if (messageContainers.length === 0) {
-        throw new Error('No Claude messages found');
-      }
-      const latestMessage = messageContainers[messageContainers.length - 1];
-      return latestMessage.textContent.trim();
+    // Find all possible message blocks from the assistant
+    const allMessageBlocks = document.querySelectorAll('.group.relative[data-is-streaming]');
+    if (allMessageBlocks.length === 0) {
+      return '';
     }
-    
-    const latestMessage = messages[messages.length - 1];
-    return latestMessage.textContent.trim();
+    // Get the very last message block on the page
+    const lastBlock = allMessageBlocks[allMessageBlocks.length - 1];
+    const isStreaming = lastBlock.getAttribute('data-is-streaming') === 'true';
+    // Find the text container within the last block
+    const textContainer = lastBlock.querySelector('.font-claude-message');
+    // Only return content if the last block is NOT streaming and the text container exists
+    if (!isStreaming && textContainer) {
+      return textContainer.textContent || '';
+    }
+    return '';
   }
 }
