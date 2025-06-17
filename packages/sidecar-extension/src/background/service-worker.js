@@ -140,6 +140,9 @@ async function handleExecutePrompt({ prompt, platform }) {
   }
 
   const result = results[0].result;
+  if (!result) {
+    throw new Error('No result returned from content script.');
+  }
   if (result.error) { // The injected function itself returned an error
     throw new Error(result.error);
   }
