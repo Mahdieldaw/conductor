@@ -1,96 +1,86 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BrainCircuit, Check, X, Send, RotateCw, Pencil, Loader, Plus, ArrowRightLeft, PenSquare, Share2, Rss } from 'lucide-react';
 import { sidecarService } from '../services/SidecarService';
+import type { Provider, PromptState, ProviderConfig, ResponseState } from '../types';
 
-// This is now static config, the `status` will be updated dynamically
-const AVAILABLE_PROVIDERS = [
+import { PromptTemplateBar } from './PromptTemplateBar';
+import { PromptComposer } from './PromptComposer';
+import { ProviderSelector } from './ProviderSelector';
+import { ExecutionController } from './ExecutionController';
+import { ResponseStateManager } from './ResponseStatusManager';
+
+// Static configuration of all potential providers the app knows about.
+const PROVIDER_CONFIGS: ProviderConfig[] = [
   { id: 'chatgpt', name: 'ChatGPT', logoColor: '#10A37F' },
   { id: 'claude', name: 'Claude', logoColor: '#D97706' },
-  // Add other potential providers here
   { id: 'perplexity', name: 'Perplexity', logoColor: '#6B7280' },
   { id: 'gemini', name: 'Gemini', logoColor: '#4F46E5' },
 ];
 
-const PROMPT_TEMPLATES = [
-  { id: "compare", label: "Compare & Contrast", icon: ArrowRightLeft, text: "Compare and contrast...\n\n" },
-  { id: "structure", label: "Structure This", icon: PenSquare, text: "Improve the following text...\n\n" },
-  { id: "synthesize", label: "Synthesize", icon: Share2, text: "Synthesize the following information...\n\n" },
-  { id: "enhance", label: "Enhance Draft", icon: Rss, text: "Enhance the following draft...\n\n" },
-];
-
-// --- Helper Components (Can be split into their own files later) ---
-
-const ProviderChip = ({ provider, selected, onClick, disabled }) => (
-    <button
-      onClick={onClick}
-      disabled={disabled || provider.status === 'offline'}
-      className={`flex items-center justify-between gap-2 px-4 py-2 text-sm font-medium rounded-full border transition-all duration-200 ${selected ? `bg-white/10 border-[${provider.logoColor}] text-white ring-2 ring-[${provider.logoColor}]` : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:border-white/20'} ${(disabled || provider.status === 'offline') ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-      <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full ${provider.status === 'ready' ? 'bg-green-500' : 'bg-gray-500'}`}></span>
-        <span>{provider.name}</span>
-      </div>
-      {selected && <Check size={16} className="text-green-400" />}
-    </button>
-);
-// ... (All other small helper components like PrimaryButton, QuickActionButton etc. would go here)
-// For brevity, I will assume they are defined as in the initial prototype
-
-// --- Core Logic ---
-
-export const PromptCanvas = () => {
-  const [promptState, setPromptState] = useState({
+export const PromptCanvas: React.FC = () => {
+  const [promptState, setPromptState] = useState<PromptState>({
     text: "",
     targetProviders: [],
-    status: "composing", // composing | executing | completed
+    status: "composing",
     responses: new Map(),
   });
   
-  const [providerStatus, setProviderStatus] = useState([]);
-
+  // This state holds the list of providers and their *live* status.
+  const [providers, setProviders] = useState<Provider[]>([]);
   const isExecuting = promptState.status === 'executing';
 
-  // Fetch available tabs from the sidecar when the component mounts
-  useEffect(() => {
-    const updateAvailableProviders = async () => {
-      try {
-        const liveTabs = await sidecarService.getAvailableTabs();
-        const liveProviderKeys = liveTabs.map(tab => tab.platformKey);
-        
-        const statuses = AVAILABLE_PROVIDERS.map(p => ({
-          ...p,
-          status: liveProviderKeys.includes(p.id) ? 'ready' : 'offline',
-        }));
-        setProviderStatus(statuses);
-
-        // Auto-select ready providers
-        const readyProviderIds = statuses.filter(p => p.status === 'ready').map(p => p.id);
-        updatePromptState({ targetProviders: readyProviderIds });
-      } catch (error) {
-        console.error("Failed to fetch available providers:", error);
-        // Handle error display in UI
-      }
-    };
-    updateAvailableProviders();
-  }, []);
-
-  const updatePromptState = (updates) => {
+  const updatePromptState = (updates: Partial<PromptState>) => {
     setPromptState(prev => ({ ...prev, ...updates }));
   };
 
+  const fetchAndUpdateProviderStatus = useCallback(async () => {
+    try {
+      const liveTabs = await sidecarService.getAvailableTabs();
+      const liveProviderKeys = liveTabs.map(tab => tab.platformKey);
+      
+      const newProviders: Provider[] = PROVIDER_CONFIGS.map(p => ({
+        ...p,
+        status: liveProviderKeys.includes(p.id) ? 'ready' as const : 'offline' as const,
+      }));
+      setProviders(newProviders);
+
+      // Auto-select ready providers by default if none are selected
+      if (promptState.targetProviders.length === 0) {
+        const readyProviderIds = newProviders.filter(p => p.status === 'ready').map(p => p.id);
+        updatePromptState({ targetProviders: readyProviderIds });
+      }
+    } catch (error) {
+      console.error("Failed to fetch available providers:", error);
+      // Here you could add UI to show this error to the user
+    }
+  }, [promptState.targetProviders.length]);
+
+  // Fetch provider status on mount and set an interval to check periodically
+  useEffect(() => {
+    fetchAndUpdateProviderStatus();
+    const interval = setInterval(fetchAndUpdateProviderStatus, 5000); // Check every 5 seconds
+    return () => clearInterval(interval);
+  }, [fetchAndUpdateProviderStatus]);
+
   const handleClear = () => {
-      // Logic to clear the state
+    setPromptState({
+      text: "",
+      targetProviders: [],
+      status: "composing",
+      responses: new Map()
+    });
+    fetchAndUpdateProviderStatus();
   };
   
-  // REAL EXECUTION LOGIC
-  const handlePromptExecution = useCallback(async (currentPromptState) => {
-    updatePromptState({ status: 'executing', responses: new Map() });
+  const handlePromptExecution = useCallback(async () => {
+    const stateToExecute = { ...promptState };
+    updatePromptState({ 
+        status: 'executing', 
+        responses: new Map(stateToExecute.targetProviders.map(p => [p, { status: 'pending' }]))
+    });
 
-    const executionPromises = currentPromptState.targetProviders.map(async (providerId) => {
-      updatePromptState({
-          responses: new Map(promptState.responses).set(providerId, { status: 'pending' })
-      });
+    const executionPromises = stateToExecute.targetProviders.map(async (providerId) => {
       try {
-        const responseData = await sidecarService.executePrompt(providerId, currentPromptState.text);
+        const responseData = await sidecarService.executePrompt(providerId, stateToExecute.text);
         setPromptState(prev => {
             const newResponses = new Map(prev.responses);
             newResponses.set(providerId, { status: 'completed', data: responseData });
@@ -100,7 +90,8 @@ export const PromptCanvas = () => {
         console.error(`Error executing on ${providerId}:`, error);
         setPromptState(prev => {
             const newResponses = new Map(prev.responses);
-            newResponses.set(providerId, { status: 'error', error: error.message });
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+            newResponses.set(providerId, { status: 'error', error: errorMessage });
             return { ...prev, responses: newResponses };
         });
       }
@@ -108,25 +99,67 @@ export const PromptCanvas = () => {
 
     await Promise.allSettled(executionPromises);
     updatePromptState({ status: 'completed' });
-  }, [promptState.responses]);
+  }, [promptState]);
 
-
-  const handleInsertTemplate = (templateText) => {
-    // Logic to insert template
+  const handleInsertTemplate = (templateText: string) => {
+    updatePromptState({
+        text: promptState.text ? `${promptState.text.trim()}\n\n${templateText}` : templateText
+    });
+    document.getElementById('prompt-input')?.focus();
   };
   
-  // The rest of the handlers (handleRetry, handleEdit) would also be re-wired here
+  const handleEdit = () => {
+      updatePromptState({ status: 'composing', responses: new Map() });
+  };
+  
+  const handleRetry = () => {
+      const failedProviders = Array.from(promptState.responses.entries())
+                                  .filter(([, resp]) => resp.status === 'error')
+                                  .map(([id]) => id);
+      if (failedProviders.length > 0) {
+          setPromptState(prev => ({ ...prev, targetProviders: failedProviders }));
+          handlePromptExecution();
+      }
+  };
 
   return (
-    <div className="bg-slate-900 min-h-screen p-4 sm:p-8 flex items-center justify-center font-sans">
-        <div className="w-full max-w-3xl mx-auto">
-            {/* The rest of the JSX for PromptCanvas, similar to the prototype */}
-            {/* It will use `providerStatus` instead of `AVAILABLE_PROVIDERS` to render the chips */}
+    <div className="bg-slate-900 min-h-screen p-4 sm:p-8 flex justify-center font-sans">
+        <div className="w-full max-w-4xl mx-auto flex flex-col gap-4">
             <div className="bg-gradient-to-br from-slate-800/50 via-slate-900 to-black p-6 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 flex flex-col gap-5">
-              {/* All the child components go here */}
-              <h2 className="text-xl font-semibold text-white">Hybrid Thinking Control Panel</h2>
-              {/* For brevity, not including all the JSX but this is where it goes */}
+              <div>
+                  <PromptTemplateBar onInsert={handleInsertTemplate} disabled={isExecuting} />
+                  <PromptComposer
+                      value={promptState.text}
+                      onChange={(text) => updatePromptState({ text })}
+                      disabled={isExecuting}
+                  />
+              </div>
+
+              <ProviderSelector
+                available={providers}
+                selected={promptState.targetProviders}
+                onSelectionChange={(selected) => updatePromptState({ targetProviders: selected })}
+                disabled={isExecuting}
+              />
+              
+              <div className="h-[1px] bg-white/10 w-full"></div>
+
+              <ExecutionController
+                promptState={promptState}
+                onExecute={handlePromptExecution}
+                onClear={handleClear}
+                onEdit={handleEdit}
+                onRetry={handleRetry}
+                onAddProvider={fetchAndUpdateProviderStatus} // Re-scan for providers
+              />
             </div>
+            
+            {promptState.responses.size > 0 && (
+              <ResponseStateManager
+                responses={promptState.responses}
+                providers={providers}
+              />
+            )}
         </div>
     </div>
   );

@@ -3,7 +3,7 @@ import claudeConfig from './configs/claude.json';
 
 const configs = [chatgptConfig, claudeConfig]; 
 
-export class Provider { 
+class Provider { // Note: class is no longer exported directly, it's internal to this module.
     constructor() { 
         this.config = this._getConfigForCurrentHost(); 
     } 
@@ -54,54 +54,65 @@ export class Provider {
         }); 
     } 
 
-    async broadcast(prompt) { 
-        let inputElement = null; 
+    async broadcast(prompt) {
+        const { platformKey, broadcastStrategy } = this.config;
+        if (!broadcastStrategy || !Array.isArray(broadcastStrategy)) {
+            throw new Error(`No valid broadcastStrategy found for ${platformKey}.`);
+        }
 
-        // Loop through all selectors in the config until one is found. This is our universal identifier logic. 
-        for (const selector of this.config.inputSelectors) { 
-            try { 
-                inputElement = await this.#waitForElement(selector, 2000); 
-                if (inputElement) { 
-                    console.log(`[Sidecar] Found input element using selector: "${selector}"`); 
-                    break; 
-                } 
-            } catch (error) { 
-                console.log(`[Sidecar] Selector "${selector}" not found, trying next...`); 
-            } 
-        } 
+        console.log(`[Sidecar Broadcast - ${platformKey}] Executing ${broadcastStrategy.length}-step strategy.`);
 
-        if (!inputElement) { 
-            throw new Error(`Could not find a valid input element for ${this.config.platformKey}.`); 
-        } 
+        for (const step of broadcastStrategy) {
+            const { action, selector, value, key, ms } = step;
+            console.log(`[Sidecar Broadcast - ${platformKey}] Running action: ${action}`);
 
-        inputElement.focus(); 
-        
-        // This handles both regular textareas and complex content-editable divs. 
-        if (inputElement.isContentEditable) { 
-            inputElement.textContent = prompt; 
-        } else { 
-            inputElement.value = prompt; 
-        } 
-        inputElement.dispatchEvent(new Event('input', { bubbles: true, cancelable: true })); 
-
-        // Patiently wait for the send button to become enabled. 
-        await new Promise(r => setTimeout(r, 500)); 
-    
-        try { 
-            await this.#waitForCondition(() => { 
-                const button = document.querySelector(this.config.sendButtonSelector); 
-                return button && !button.disabled; 
-            }, 3000); 
-
-            const sendButton = document.querySelector(this.config.sendButtonSelector); 
-            sendButton.click(); 
-            console.log(`[Sidecar] Successfully submitted via button click for ${this.config.platformKey}.`); 
-
-        } catch (error) { 
-            console.warn(`[Sidecar] Button was not enabled in time. Falling back to Enter key press for ${this.config.platformKey}.`); 
-            const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }); 
-            inputElement.dispatchEvent(enterEvent); 
-        } 
+            try {
+                switch (action) {
+                    case 'type': {
+                        const el = await this.#waitForElement(selector);
+                        const text = value.replace('{{prompt}}', prompt);
+                        el.focus();
+                        if (el.isContentEditable) {
+                            el.textContent = text;
+                        } else {
+                            el.value = text;
+                        }
+                        el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                        break;
+                    }
+                    case 'click': {
+                        const el = document.querySelector(selector);
+                        if (el && !el.disabled) {
+                            el.click();
+                        } else {
+                            console.warn(`[Sidecar Broadcast - ${platformKey}] Click target not found or disabled: ${selector}`);
+                        }
+                        break;
+                    }
+                    case 'keydown': {
+                        const el = await this.#waitForElement(selector);
+                        el.dispatchEvent(new KeyboardEvent('keydown', {
+                            key: key,
+                            code: key, // e.g., 'Enter'
+                            bubbles: true,
+                            cancelable: true,
+                        }));
+                        break;
+                    }
+                    case 'wait': {
+                        await new Promise(r => setTimeout(r, ms));
+                        break;
+                    }
+                    default:
+                        console.warn(`[Sidecar Broadcast - ${platformKey}] Unknown action: ${action}`);
+                }
+            } catch (error) {
+                console.error(`[Sidecar Broadcast - ${platformKey}] Error during action "${action}" with selector "${selector}":`, error);
+                // In a more advanced version, you could have logic to stop or continue on error.
+                throw error; 
+            }
+        }
+        console.log(`[Sidecar Broadcast - ${platformKey}] Strategy execution complete.`);
     } 
 
     async harvest() { 
@@ -109,13 +120,11 @@ export class Provider {
             const timeout = 90000; 
             const startTime = Date.now(); 
 
-            // Stage 1: The Polling Loop. Patiently waits for the stream to finish. 
             const poller = setInterval(() => { 
                 if (Date.now() - startTime > timeout) { 
                     clearInterval(poller); 
                     return reject(new Error(`Timeout: Stream did not complete for ${this.config.platformKey}.`)); 
                 } 
-
                 const isStreaming = !!document.querySelector(this.config.streamingIndicatorSelector); 
                 if (!isStreaming) { 
                     clearInterval(poller); 
@@ -123,28 +132,50 @@ export class Provider {
                 } 
             }, 750); 
 
-            // Stage 2: The Final Scrape. Runs once after streaming stops. 
             const finalizeHarvest = async () => { 
                 try { 
                     await new Promise(r => setTimeout(r, 500)); // Grace period for final UI render. 
 
+                    const platformKey = this.config.platformKey;
+                    console.log(`[Sidecar Harvest - ${platformKey}] Searching for selector: "${this.config.responseContainerSelector}"`);
                     const responseContainers = document.querySelectorAll(this.config.responseContainerSelector); 
+                    console.log(`[Sidecar Harvest - ${platformKey}] Found ${responseContainers.length} matching containers.`);
+
                     if (responseContainers.length > 0) { 
                         const lastResponse = responseContainers[responseContainers.length - 1]; 
-                        const responseText = lastResponse.textContent.trim(); 
+                        console.log(`[Sidecar Harvest - ${platformKey}] Last container found. outerHTML:`, lastResponse.outerHTML);
                         
-                        if (responseText.length > 0) { 
+                        const responseText = lastResponse.textContent?.trim(); 
+                        console.log(`[Sidecar Harvest - ${platformKey}] Extracted textContent (length: ${responseText?.length}):`, responseText);
+                        
+                        if (responseText && responseText.length > 0) { 
                             resolve(responseText); 
                         } else { 
-                            reject(new Error("Harvest failed: Response container was found but remained empty.")); 
+                            reject(new Error("Harvest failed: Response container was found but its textContent is empty.")); 
                         } 
                     } else { 
                         reject(new Error("Harvest failed: Response container selector found no elements on the page.")); 
                     }
                 } catch (e) {
-                    reject(new Error(`Error during final harvest for ${this.config.platformKey}: ${e.message}`));
+                    const platformKey = this.config.platformKey;
+                    reject(new Error(`Error during final harvest for ${platformKey}: ${e.message}`));
                 }
             };
         });
     }
 }
+
+
+// --- THE FIX IS HERE ---
+let providerInstance;
+try {
+  // Create an instance of the class *within this module*.
+  providerInstance = new Provider();
+} catch (e) {
+  // This is expected. It just means we are on a webpage that is not a configured LLM provider.
+  // The instance will remain `undefined`, and content.js will handle this.
+  providerInstance = null;
+}
+
+// Export the created INSTANCE as the named export 'provider'.
+export { providerInstance as provider };

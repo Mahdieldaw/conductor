@@ -1,8 +1,11 @@
 {
   "platformKey": "claude",
   "hostnames": ["claude.ai"],
-  "inputSelector": "div.ProseMirror",
-  "sendButtonSelector": "button[aria-label*='Send Message']",
   "streamingIndicatorSelector": "[data-is-streaming='true']",
-  "responseContainerSelector": ".font-claude-message .prose"
+  "responseContainerSelector": "div[data-is-streaming='false'] .font-claude-message .grid",
+  "broadcastStrategy": [
+    { "action": "type", "selector": "div.ProseMirror", "value": "{{prompt}}" },
+    { "action": "wait", "ms": 500 },
+    { "action": "keydown", "selector": "div.ProseMirror", "key": "Enter" }
+  ]
 }

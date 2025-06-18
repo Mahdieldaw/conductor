@@ -1,8 +1,11 @@
 {
   "platformKey": "chatgpt",
   "hostnames": ["chat.openai.com", "chatgpt.com"],
-  "inputSelector": "#prompt-textarea",
-  "sendButtonSelector": "button[data-testid='send-button']",
-  "streamingIndicatorSelector": ".result-streaming",
-  "responseContainerSelector": "div[data-message-author-role='assistant'] .markdown"
+  "streamingIndicatorSelector": ".result-thinking",
+  "responseContainerSelector": "div[data-message-author-role='assistant'] div.markdown",
+  "broadcastStrategy": [
+    { "action": "type", "selector": "#prompt-textarea", "value": "{{prompt}}" },
+    { "action": "wait", "ms": 200 },
+    { "action": "click", "selector": "button[data-testid='send-button']" }
+  ]
 }
