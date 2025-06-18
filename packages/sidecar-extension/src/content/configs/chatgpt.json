@@ -3,9 +3,13 @@
   "hostnames": ["chat.openai.com", "chatgpt.com"],
   "streamingIndicatorSelector": ".result-thinking",
   "responseContainerSelector": "div[data-message-author-role='assistant'] div.markdown",
+  "selectors": {
+    "input": "#prompt-textarea",
+    "sendButton": "button[data-testid='send-button']"
+  },
   "broadcastStrategy": [
-    { "action": "type", "selector": "#prompt-textarea", "value": "{{prompt}}" },
+    { "action": "type", "target": "input", "value": "{{prompt}}" },
     { "action": "wait", "ms": 200 },
-    { "action": "click", "selector": "button[data-testid='send-button']" }
+    { "action": "click", "target": "sendButton" }
   ]
 }

@@ -55,21 +55,26 @@ class Provider { // Note: class is no longer exported directly, it's internal to
     } 
 
     async broadcast(prompt) {
-        const { platformKey, broadcastStrategy } = this.config;
-        if (!broadcastStrategy || !Array.isArray(broadcastStrategy)) {
-            throw new Error(`No valid broadcastStrategy found for ${platformKey}.`);
+        const { platformKey, broadcastStrategy, selectors } = this.config;
+        if (!broadcastStrategy || !selectors) {
+            throw new Error(`Config for ${platformKey} is missing 'broadcastStrategy' or 'selectors'.`);
         }
 
         console.log(`[Sidecar Broadcast - ${platformKey}] Executing ${broadcastStrategy.length}-step strategy.`);
 
         for (const step of broadcastStrategy) {
-            const { action, selector, value, key, ms } = step;
-            console.log(`[Sidecar Broadcast - ${platformKey}] Running action: ${action}`);
+            // Unpack the step details
+            const { action, target, value, key, ms } = step;
+            // Get the real CSS selector from the config using the target name (e.g., 'input')
+            const cssSelector = target ? selectors[target] : null;
+
+            console.log(`[Sidecar Broadcast - ${platformKey}] Running action: '${action}' on target: '${target || 'none'}'`);
 
             try {
                 switch (action) {
                     case 'type': {
-                        const el = await this.#waitForElement(selector);
+                        if (!cssSelector) throw new Error(`'type' action requires a 'target'.`);
+                        const el = await this.#waitForElement(cssSelector);
                         const text = value.replace('{{prompt}}', prompt);
                         el.focus();
                         if (el.isContentEditable) {
@@ -81,19 +86,21 @@ class Provider { // Note: class is no longer exported directly, it's internal to
                         break;
                     }
                     case 'click': {
-                        const el = document.querySelector(selector);
+                        if (!cssSelector) throw new Error(`'click' action requires a 'target'.`);
+                        const el = document.querySelector(cssSelector);
                         if (el && !el.disabled) {
                             el.click();
                         } else {
-                            console.warn(`[Sidecar Broadcast - ${platformKey}] Click target not found or disabled: ${selector}`);
+                            console.warn(`[Sidecar Broadcast - ${platformKey}] Click target '${target}' not found or disabled.`);
                         }
                         break;
                     }
                     case 'keydown': {
-                        const el = await this.#waitForElement(selector);
+                        if (!cssSelector) throw new Error(`'keydown' action requires a 'target'.`);
+                        const el = await this.#waitForElement(cssSelector);
                         el.dispatchEvent(new KeyboardEvent('keydown', {
                             key: key,
-                            code: key, // e.g., 'Enter'
+                            code: key,
                             bubbles: true,
                             cancelable: true,
                         }));
@@ -104,12 +111,11 @@ class Provider { // Note: class is no longer exported directly, it's internal to
                         break;
                     }
                     default:
-                        console.warn(`[Sidecar Broadcast - ${platformKey}] Unknown action: ${action}`);
+                        console.warn(`[Sidecar Broadcast - ${platformKey}] Unknown action: '${action}'`);
                 }
             } catch (error) {
-                console.error(`[Sidecar Broadcast - ${platformKey}] Error during action "${action}" with selector "${selector}":`, error);
-                // In a more advanced version, you could have logic to stop or continue on error.
-                throw error; 
+                console.error(`[Sidecar Broadcast - ${platformKey}] Error during action '${action}'`, error);
+                throw error;
             }
         }
         console.log(`[Sidecar Broadcast - ${platformKey}] Strategy execution complete.`);
