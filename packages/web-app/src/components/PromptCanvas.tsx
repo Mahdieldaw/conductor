@@ -6,7 +6,7 @@ import { PromptTemplateBar } from './PromptTemplateBar';
 import { PromptComposer } from './PromptComposer';
 import { ProviderSelector } from './ProviderSelector';
 import { ExecutionController } from './ExecutionController';
-import { ResponseStateManager } from './ResponseStatusManager';
+import { ResultsDisplay } from './ResultsDisplay';
 
 // Static configuration of all potential providers the app knows about.
 const PROVIDER_CONFIGS: ProviderConfig[] = [
@@ -72,33 +72,38 @@ export const PromptCanvas: React.FC = () => {
   };
   
   const handlePromptExecution = useCallback(async () => {
-    const stateToExecute = { ...promptState };
-    updatePromptState({ 
-        status: 'executing', 
-        responses: new Map(stateToExecute.targetProviders.map(p => [p, { status: 'pending' }]))
-    });
+    const targets = promptState.targetProviders;
+    if (targets.length === 0) return;
 
-    const executionPromises = stateToExecute.targetProviders.map(async (providerId) => {
-      try {
-        const responseData = await sidecarService.executePrompt(providerId, stateToExecute.text);
-        setPromptState(prev => {
-            const newResponses = new Map(prev.responses);
-            newResponses.set(providerId, { status: 'completed', data: responseData });
-            return { ...prev, responses: newResponses };
-        });
-      } catch (error) {
-        console.error(`Error executing on ${providerId}:`, error);
-        setPromptState(prev => {
-            const newResponses = new Map(prev.responses);
-            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-            newResponses.set(providerId, { status: 'error', error: errorMessage });
-            return { ...prev, responses: newResponses };
-        });
+    // 1. Initialize UI state for all targets to 'pending'.
+    // This provides immediate user feedback that work has started.
+    const initialResponses = new Map(
+      targets.map(id => [id, { status: 'pending' }])
+    );
+    updatePromptState({ status: 'executing', responses: initialResponses });
+
+    // 2. Create an array of execution promises.
+    const executionPromises = targets.map(providerId =>
+      sidecarService.executePrompt(providerId, promptState.text)
+    );
+
+    // 3. Await all results using Promise.allSettled for maximum robustness.
+    const results = await Promise.allSettled(executionPromises);
+
+    // 4. Reconcile all results back into the state map.
+    // This is a single, efficient batch update to prevent multiple re-renders.
+    const finalResponses = new Map(initialResponses); // Start from a clean slate
+    results.forEach((result, index) => {
+      const providerId = targets[index];
+      if (result.status === 'fulfilled') {
+        finalResponses.set(providerId, { status: 'completed', data: result.value });
+      } else {
+        // Capture the error message for display in the UI.
+        finalResponses.set(providerId, { status: 'error', error: result.reason.message });
       }
     });
 
-    await Promise.allSettled(executionPromises);
-    updatePromptState({ status: 'completed' });
+    updatePromptState({ status: 'completed', responses: finalResponses });
   }, [promptState]);
 
   const handleInsertTemplate = (templateText: string) => {
@@ -155,7 +160,7 @@ export const PromptCanvas: React.FC = () => {
             </div>
             
             {promptState.responses.size > 0 && (
-              <ResponseStateManager
+              <ResultsDisplay
                 responses={promptState.responses}
                 providers={providers}
               />

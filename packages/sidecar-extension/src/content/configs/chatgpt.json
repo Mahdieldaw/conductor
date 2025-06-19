@@ -1,15 +1,40 @@
 {
   "platformKey": "chatgpt",
   "hostnames": ["chat.openai.com", "chatgpt.com"],
-  "streamingIndicatorSelector": ".result-thinking",
-  "responseContainerSelector": "div[data-message-author-role='assistant'] div.markdown",
   "selectors": {
-    "input": "#prompt-textarea",
-    "sendButton": "button[data-testid='send-button']"
+    "input": [
+      "#prompt-textarea",
+      "textarea[data-id='root']"
+    ],
+    "sendButton": [
+      "button[data-testid='send-button']",
+      "button[data-testid='send-message-button']"
+    ],
+    "responseContainer": [
+      "div[data-message-author-role='assistant']:last-of-type .markdown",
+      "div[data-message-author-role='assistant']:last-of-type"
+    ],
+    "conversationWrapper": [
+      "main",
+      "div[class*='react-scroll-to-bottom']"
+    ],
+    "completionMarker": [
+      "button[data-testid='copy-turn-action-button']",
+      "button[data-testid='copy-button']"
+    ],
+    "streamingIndicator": [
+      ".result-thinking",
+      "div[data-message-author-role='assistant']:last-of-type [class*='loading']"
+    ]
   },
   "broadcastStrategy": [
-    { "action": "type", "target": "input", "value": "{{prompt}}" },
+    { "action": "fill", "target": "input", "value": "{{prompt}}" },
     { "action": "wait", "ms": 200 },
     { "action": "click", "target": "sendButton" }
-  ]
+  ],
+  "harvestStrategy": {
+    "method": "observer",
+    "observeTarget": "conversationWrapper",
+    "timeout": 45000
+  }
 }

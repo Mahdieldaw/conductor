@@ -64,21 +64,37 @@ export const ExecutionController: React.FC<ExecutionControllerProps> = ({ prompt
     );
   }
 
+  // Check if all responses are completed successfully
+  const allResponsesCompleted = promptState.status === 'completed' && 
+    Array.from(promptState.responses.values()).every(response => response.status === 'completed');
+
   // Post-execution actions
   return (
-    <div className="flex flex-wrap items-center gap-3 mt-4 p-3 bg-white/5 rounded-lg">
-      <span className="text-gray-300 font-medium mr-2">Next:</span>
-      <QuickActionButton onClick={onEdit} icon={Pencil as any}>
-        Edit & Re-send
-      </QuickActionButton>
-      {hasFailedProviders && (
-         <QuickActionButton onClick={onRetry} icon={RotateCw as any}>
-           Retry Failed
-         </QuickActionButton>
+    <div className="flex flex-col gap-3 mt-4">
+      {/* Success message when all responses are completed */}
+      {allResponsesCompleted && (
+        <div className="p-3 bg-green-900/20 border border-green-500/30 rounded-lg">
+          <div className="flex items-center gap-2 text-green-400 font-medium">
+            <span>✅</span>
+            <span>All responses received successfully.</span>
+          </div>
+        </div>
       )}
-       <QuickActionButton onClick={onAddProvider} icon={Plus as any}>
-         Add & Re-run
-       </QuickActionButton>
+      
+      <div className="flex flex-wrap items-center gap-3 p-3 bg-white/5 rounded-lg">
+        <span className="text-gray-300 font-medium mr-2">Next:</span>
+        <QuickActionButton onClick={onEdit} icon={Pencil as any}>
+          Edit & Re-send
+        </QuickActionButton>
+        {hasFailedProviders && (
+           <QuickActionButton onClick={onRetry} icon={RotateCw as any}>
+             Retry Failed
+           </QuickActionButton>
+        )}
+         <QuickActionButton onClick={onAddProvider} icon={Plus as any}>
+           Add & Re-run
+         </QuickActionButton>
+      </div>
     </div>
-  );
-};
+  );}
+

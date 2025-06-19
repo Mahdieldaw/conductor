@@ -1,17 +1,46 @@
 {
   "platformKey": "claude",
   "hostnames": ["claude.ai"],
-  "streamingIndicatorSelector": "[data-is-streaming='true']",
-  "responseContainerSelector": "div[data-is-streaming='false'] .font-claude-message .grid",
   "selectors": {
-    "input": "div.ProseMirror",
-    "sendButton": "button[aria-label='Send message']:not([disabled])"
+    "input": [
+      "div.ProseMirror",
+      "div[contenteditable='true'][data-placeholder]",
+      "div[contenteditable='true']"
+    ],
+    "sendButton": [
+      "button[aria-label='Send message']:not([disabled])",
+      "button[data-testid='send-button']:not([disabled])",
+      "button[aria-label='Send message']"
+    ],
+    "responseContainer": [
+      "div.font-claude-message:last-of-type",
+      "div[data-is-streaming='false']:last-of-type .font-claude-message",
+      "div.font-claude-message"
+    ],
+    "conversationWrapper": [
+      "main",
+      "div[role='main']",
+      "div.flex.flex-col.gap-3"
+    ],
+    "streamingIndicator": [
+      "[data-is-streaming='true']",
+      "div.font-claude-message [data-is-streaming='true']",
+      ".animate-pulse"
+    ],
+    "completionMarker": [
+      "button[data-testid='action-bar-copy']",
+      "button[aria-label='Copy']",
+      "button[title='Copy']"
+    ]
   },
   "broadcastStrategy": [
-    { "action": "type", "target": "input", "value": "{{prompt}}" },
+    { "action": "fill", "target": "input", "value": "{{prompt}}" },
     { "action": "wait", "ms": 500 },
-    { "action": "click", "target": "sendButton" },
-    { "action": "wait", "ms": 100 },
-    { "action": "keydown", "target": "input", "key": "Enter" }
-  ]
+    { "action": "click", "target": "sendButton" }
+  ],
+  "harvestStrategy": {
+    "method": "observer",
+    "observeTarget": "conversationWrapper",
+    "timeout": 45000
+  }
 }
