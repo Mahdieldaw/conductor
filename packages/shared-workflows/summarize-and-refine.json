@@ -1,0 +1,20 @@
+{
+  "id": "summarize-and-refine",
+  "description": "Gets a summary from one provider and asks another to refine it.",
+  "steps": [
+    {
+      "id": "step1_summarize",
+      "provider": "claude",
+      "prompt": "Summarize the following text: {{input.text}}"
+    },
+    {
+      "id": "step2_refine",
+      "provider": "chatgpt",
+      "prompt": "Refine and improve the following summary: {{outputs.step1_summarize}}"
+    }
+  ],
+  "synthesis": {
+    "provider": "chatgpt",
+    "prompt": "You have been provided with an original summary and a refined summary. Please provide a final, high-quality summary based on both. Here is the original: {{outputs.step1_summarize}}. Here is the refined version: {{outputs.step2_refine}}."
+  }
+}

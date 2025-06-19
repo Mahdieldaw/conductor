@@ -1,0 +1,20 @@
+{
+  "id": "default-create",
+  "description": "Sends a prompt to two providers and synthesizes the results.",
+  "steps": [
+    {
+      "id": "step1_claude",
+      "provider": "claude",
+      "prompt": "{{input.prompt}}"
+    },
+    {
+      "id": "step2_chatgpt",
+      "provider": "chatgpt",
+      "prompt": "{{input.prompt}}"
+    }
+  ],
+  "synthesis": {
+    "provider": "chatgpt",
+    "prompt": "I have received two different responses to the same prompt. Please synthesize them into a single, comprehensive answer. \n\nPrompt: {{input.prompt}}\n\nResponse 1 (from Claude): {{outputs.step1_claude}}\n\nResponse 2 (from ChatGPT): {{outputs.step2_chatgpt}}"
+  }
+}

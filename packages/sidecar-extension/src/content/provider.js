@@ -66,37 +66,76 @@ class Provider {
     }
   }
 
-  // Unified broadcast method.
+  // Unified broadcast method with normalized response structure and metadata
   async broadcast(prompt) {
     const { platformKey, broadcastStrategy, selectors } = this.config;
+    console.log(`[Sidecar Broadcast - ${platformKey}] Executing ${broadcastStrategy.length}-step strategy.`);
+    const startTime = performance.now();
+
     for (const step of broadcastStrategy) {
-        const { action, target, value } = step;
-        const cssSelectorList = target ? selectors[target] : null;
-        try {
-            switch (action) {
-                case 'fill': {
-                    const el = await this.#waitForElement(cssSelectorList);
-                    this.#setElementText(el, value.replace('{{prompt}}', prompt));
-                    break;
+      const stepStartTime = performance.now();
+      const { action, target, value } = step;
+      const cssSelectorList = target ? selectors[target] : null;
+
+      console.log(`[Sidecar Broadcast - ${platformKey}] Running action: '${action}' on target: '${target || 'none'}'`);
+
+      try {
+        switch (action) {
+          case 'fill': {
+            const el = await this.#waitForElement(cssSelectorList);
+            this.#setElementText(el, value.replace('{{prompt}}', prompt));
+            break;
+          }
+          case 'click': {
+            const el = this.#querySelector(cssSelectorList);
+            if (el && !el.disabled) {
+              el.click();
+            } else {
+              // Return a normalized failure object.
+              const stepDuration = performance.now() - stepStartTime;
+              return {
+                success: false,
+                error: `Click target '${target}' not found or was disabled.`,
+                meta: {
+                  step: action,
+                  target: target,
+                  duration: stepDuration
                 }
-                case 'click': {
-                    const el = this.#querySelector(cssSelectorList);
-                    if (el && !el.disabled) {
-                        el.click();
-                    } else {
-                        throw new Error(`Broadcast failed: Click target '${target}' not found or was disabled.`);
-                    }
-                    break;
-                }
-                case 'wait':
-                    await new Promise(r => setTimeout(r, step.ms));
-                    break;
+              };
             }
-        } catch (error) {
-            console.error(`[Sidecar Broadcast - ${platformKey}] Error during action '${action}'`, error);
-            throw error;
+            break;
+          }
+          case 'wait':
+            await new Promise(r => setTimeout(r, step.ms));
+            break;
+          default:
+            console.warn(`[Sidecar Broadcast - ${platformKey}] Unknown action: '${action}'`);
         }
+      } catch (error) {
+        console.error(`[Sidecar Broadcast - ${platformKey}] Error during action '${action}'`, error);
+        const stepDuration = performance.now() - stepStartTime;
+        // Return a normalized error object with rich metadata.
+        return {
+          success: false,
+          error: error.message,
+          meta: {
+            step: action,
+            target: target,
+            duration: stepDuration
+          }
+        };
+      }
     }
+
+    const totalDuration = performance.now() - startTime;
+    console.log(`[Sidecar Broadcast - ${platformKey}] Strategy execution complete.`);
+    // Return a normalized success object.
+    return {
+      success: true,
+      meta: {
+        duration: totalDuration
+      }
+    };
   }
 
   /**
