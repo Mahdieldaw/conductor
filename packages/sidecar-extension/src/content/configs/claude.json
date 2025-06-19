@@ -39,8 +39,11 @@
     { "action": "click", "target": "sendButton" }
   ],
   "harvestStrategy": {
-    "method": "observer",
+    "method": "concurrent",
     "observeTarget": "conversationWrapper",
-    "timeout": 45000
+    "timeout": 45000,
+    "maxAttempts": 8,
+    "baseDelay": 1000,
+    "backoffMultiplier": 1.2
   }
 }

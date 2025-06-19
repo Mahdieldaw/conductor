@@ -123,25 +123,46 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
 
 // This function remains the "atomic" one for executing a prompt and harvesting the result.
 async function handleExecutePrompt({ prompt, platform }) {
-  // THE FIX: Convert to lowercase here, and ONLY here.
   const platformKey = platform.toLowerCase();
   const targetTab = tabRegistry.findTabByPlatform(platformKey);
   if (!targetTab) {
     throw new Error(`No active tab for platform: ${platform}`);
   }
-  const results = await chrome.scripting.executeScript({
+
+  // 1. Broadcast
+  await chrome.scripting.executeScript({
     target: { tabId: targetTab.tabId },
-    func: async (promptToExecute) => {
-      if (!window.sidecar) throw new Error('Sidecar API not found on page.');
-      await window.sidecar.broadcast(promptToExecute);
-      return await window.sidecar.harvest();
-    },
+    func: (p) => window.sidecar.broadcast(p),
     args: [prompt],
   });
-  if (!results || !results[0]) throw new Error('Script execution failed in target tab.');
-  if (results[0].error) throw new Error(`Content script error: ${results[0].error.message}`);
-  if (results[0].result === null || results[0].result === undefined) throw new Error('Content script returned a null or undefined result.');
-  return results[0].result;
+
+  // 2. Harvest
+  console.log(`[Service Worker] Initiating harvest for ${platformKey}...`);
+
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: targetTab.tabId },
+    func: () => window.sidecar.harvest(),
+  });
+
+  if (!results || results.length === 0) {
+    throw new Error("Script execution failed to return a result object.");
+  }
+
+  const [firstResult] = results;
+
+  if (firstResult.error) {
+    throw new Error(`Content script unhandled error: ${firstResult.error.message}`);
+  }
+
+  const normalizedResponse = firstResult.result;
+
+  if (normalizedResponse && normalizedResponse.success) {
+    console.log(`[Service Worker] ✅ Harvest successful for ${platformKey}. Method: ${normalizedResponse.meta.method}, Duration: ${normalizedResponse.meta.duration.toFixed(0)}ms`);
+    return normalizedResponse.data;
+  } else {
+    console.error(`[Service Worker] ❌ Harvest failed for ${platformKey}. Method: ${normalizedResponse.meta.method}, Error: ${normalizedResponse.error}`);
+    throw new Error(normalizedResponse.error || "An unknown harvest error occurred.");
+  }
 }
 
 // This new function handles harvesting a response independently.

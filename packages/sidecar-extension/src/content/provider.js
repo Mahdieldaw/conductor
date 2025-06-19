@@ -1,8 +1,9 @@
-// provider.js - The True Hybrid Engine with Dual Harvest Methods
+// provider.js - Production-Grade Concurrent Harvest Engine
 
 class Provider {
   constructor() {
     this.config = this._getConfigForCurrentHost();
+    this.activeControllers = new Set(); // Track active abort controllers
   }
 
   // Correctly handles default exports from JSON modules.
@@ -98,165 +99,337 @@ class Provider {
     }
   }
 
-  // Main harvest dispatcher.
+  /**
+   * Main harvest dispatcher with concurrent execution support
+   * Returns normalized { success: boolean, data?: string, error?: string, meta?: object }
+   */
   async harvest() {
     const { harvestStrategy, platformKey } = this.config;
     console.log(`[Sidecar Harvest - ${platformKey}] Dispatching with method: '${harvestStrategy.method}'`);
-    if (!harvestStrategy || !harvestStrategy.method) {
-      throw new Error("No harvestStrategy.method defined in config.");
+    if (!harvestStrategy?.method) {
+      return this.#createErrorResult('No harvestStrategy.method defined in config.');
     }
-    switch (harvestStrategy.method) {
-      case 'poll':
-        return this.#harvestWithPolling();
-      case 'observer':
-        return this.#harvestWithObserver();
-      default:
-        throw new Error(`Unknown harvest method: ${harvestStrategy.method}`);
+    const startTime = performance.now();
+    try {
+      let result;
+      switch (harvestStrategy.method) {
+        case 'poll':
+          result = await this.#executeStrategy('polling', () => this.#harvestWithPolling());
+          break;
+        case 'observer':
+          result = await this.#executeStrategy('observer', () => this.#harvestWithObserver());
+          break;
+        case 'concurrent':
+        case 'race':
+          result = await this.#executeConcurrentHarvest();
+          break;
+        default:
+          return this.#createErrorResult(`Unknown harvest method: ${harvestStrategy.method}`);
+      }
+      const duration = performance.now() - startTime;
+      return this.#enrichResult(result, { duration, method: harvestStrategy.method });
+    } catch (error) {
+      const duration = performance.now() - startTime;
+      return this.#createErrorResult(error.message || String(error), { duration, method: harvestStrategy.method });
     }
   }
 
-  // Helper for the "Adaptive Strategist" Polling Method.
-  async #harvestWithPolling() {
+  /**
+   * Concurrent harvest execution - both methods race, winner takes all
+   */
+  async #executeConcurrentHarvest() {
+    const { platformKey } = this.config;
+    console.log(`[Sidecar Harvest - ${platformKey}] Starting concurrent harvest (polling vs observer)`);
+    // Create abort controllers for both strategies
+    const pollingController = new AbortController();
+    const observerController = new AbortController();
+    this.activeControllers.add(pollingController);
+    this.activeControllers.add(observerController);
+    const pollingPromise = this.#executeStrategy('polling', 
+      () => this.#harvestWithPolling(pollingController.signal),
+      pollingController
+    );
+    const observerPromise = this.#executeStrategy('observer', 
+      () => this.#harvestWithObserver(observerController.signal),
+      observerController
+    );
+    try {
+      // Race the strategies - first successful result wins
+      const result = await Promise.race([pollingPromise, observerPromise]);
+      // Cancel the losing strategy
+      this.#cancelRemainingControllers([pollingController, observerController]);
+      console.log(`[Sidecar Harvest - ${platformKey}] ✅ Concurrent harvest completed, winner: ${result.meta?.strategy}`);
+      return result;
+    } catch (error) {
+      // If race fails, cancel everything and return error
+      this.#cancelRemainingControllers([pollingController, observerController]);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute a single strategy with error handling and normalization
+   */
+  async #executeStrategy(strategyName, executor, controller = null) {
+    const { platformKey } = this.config;
+    try {
+      const rawResult = await executor();
+      // Check if operation was aborted
+      if (controller?.signal.aborted) {
+        return this.#createErrorResult(`${strategyName} strategy was cancelled`);
+      }
+      return this.#normalizeResult(rawResult, strategyName);
+    } catch (error) {
+      if (error.name === 'AbortError' || controller?.signal.aborted) {
+        console.log(`[Sidecar Harvest - ${platformKey}] ${strategyName} strategy cancelled`);
+        return this.#createErrorResult(`${strategyName} strategy was cancelled`);
+      }
+      console.warn(`[Sidecar Harvest - ${platformKey}] ${strategyName} strategy failed:`, error.message);
+      return this.#createErrorResult(error.message || String(error), { strategy: strategyName });
+    }
+  }
+
+  /**
+   * Enhanced polling method with abort signal support
+   */
+  async #harvestWithPolling(signal = null) {
     const { platformKey, harvestStrategy, selectors } = this.config;
     console.log(`[Sidecar Harvest - ${platformKey}] Starting polling harvest.`);
     let attempt = 0;
-    while (attempt < harvestStrategy.maxAttempts) {
+    const maxAttempts = harvestStrategy.maxAttempts || 10;
+    while (attempt < maxAttempts) {
+      // Check for abort signal
+      if (signal?.aborted) {
+        throw new Error('Polling aborted');
+      }
       let allChecksPassed = true;
-      for (const check of harvestStrategy.completionChecks) {
-          const list = selectors[check.target];
-          if (check.type === 'absence' && this.#querySelector(list)) { allChecksPassed = false; break; }
-          if (check.type === 'presence' && !this.#querySelector(list)) { allChecksPassed = false; break; }
+      for (const check of harvestStrategy.completionChecks || []) {
+        const list = selectors[check.target];
+        if (check.type === 'absence' && this.#querySelector(list)) { 
+          allChecksPassed = false; 
+          break; 
+        }
+        if (check.type === 'presence' && !this.#querySelector(list)) { 
+          allChecksPassed = false; 
+          break; 
+        }
       }
       if (allChecksPassed) {
-          console.log(`[Sidecar Harvest - ${platformKey}] ✅ Polling checks passed.`);
-          await new Promise(r => setTimeout(r, 250));
-          const els = document.querySelectorAll(selectors.responseContainer.join(','));
-          const text = els[els.length-1]?.textContent?.trim();
-          if (text) return text;
-          throw new Error("Found response container but empty.");
+        console.log(`[Sidecar Harvest - ${platformKey}] ✅ Polling checks passed on attempt ${attempt + 1}`);
+        // Stabilization delay
+        await this.#abortableDelay(2000, signal);
+        const result = this.#performScrape();
+        if (result) return result;
+        throw new Error("Polling detected completion but scraping returned empty result");
       }
-      const delay = harvestStrategy.baseDelay * Math.pow(harvestStrategy.backoffMultiplier, attempt);
-      await new Promise(r => setTimeout(r, delay));
+      const delay = (harvestStrategy.baseDelay || 500) * Math.pow(harvestStrategy.backoffMultiplier || 1.2, attempt);
+      await this.#abortableDelay(delay, signal);
       attempt++;
     }
-    throw new Error(`Harvest failed after ${harvestStrategy.maxAttempts} polling attempts.`);
+    throw new Error(`Polling failed after ${maxAttempts} attempts`);
   }
 
-  // Enhanced Observer Method - Waits for TRUE completion
-  async #harvestWithObserver() {
+  /**
+   * Enhanced observer method with abort signal support
+   */
+  async #harvestWithObserver(signal = null) {
     const { platformKey, harvestStrategy, selectors } = this.config;
+    console.log(`[Sidecar Harvest - ${platformKey}] Starting intelligent observer harvest.`);
     const observeTargetSelector = selectors[harvestStrategy.observeTarget];
-    const responseSelector = selectors.responseContainer;
     const completionMarkerSelector = selectors.completionMarker;
-    
-    console.log(`[Sidecar Harvest - ${platformKey}] Starting observer harvest.`);
-    
-    const finalScrape = () => {
-      const responseElements = document.querySelectorAll(responseSelector.join(','));
-      if (responseElements.length > 0) {
-        return responseElements[responseElements.length - 1]?.textContent?.trim();
-      }
-      return null;
-    };
-
-    const isResponseComplete = () => {
-      // Method 1: Check for completion marker (copy button, etc.)
-      if (completionMarkerSelector && this.#querySelector(completionMarkerSelector)) {
-        return true;
-      }
-      
-      // Method 2: Check for streaming indicator absence (if configured)
-      if (selectors.streamingIndicator && !this.#querySelector(selectors.streamingIndicator)) {
-        // Only consider complete if we also have content
-        const content = finalScrape();
-        return content && content.length > 10;
-      }
-      
-      return false;
-    };
-
     return new Promise((resolve, reject) => {
-      // STEP 1: Check if already complete
-      if (isResponseComplete()) {
-        const content = finalScrape();
-        if (content) {
-          console.log(`[Sidecar Harvest - ${platformKey}] ✅ Response already complete on initial check.`);
-          return resolve(content);
-        }
+      // Check for abort signal
+      if (signal?.aborted) {
+        return reject(new Error('Observer aborted'));
       }
-
-      // STEP 2: Set up observer with completion detection
+      let observer;
+      let failsafeTimeout;
+      // Cleanup logic
+      const cleanup = () => {
+        if (observer) observer.disconnect();
+        if (failsafeTimeout) clearTimeout(failsafeTimeout);
+        if (signalListener) signal?.removeEventListener('abort', signalListener);
+      };
+      // Abort signal listener
+      const signalListener = signal ? () => {
+        cleanup();
+        reject(new Error('Observer aborted'));
+      } : null;
+      if (signalListener) {
+        signal.addEventListener('abort', signalListener);
+      }
+      // Helper to check for completion marker
+      const checkForCompletion = () => {
+        return this.#querySelector(completionMarkerSelector);
+      };
+      // STEP 1: Immediate check
+      if (checkForCompletion()) {
+        console.log(`[Sidecar Harvest - ${platformKey}] ✅ Completion marker found on initial check.`);
+        cleanup();
+        return resolve(this.#performScrape());
+      }
+      // STEP 2: Set up observer
       const targetNode = this.#querySelector(observeTargetSelector);
       if (!targetNode) {
+        cleanup();
         return reject(new Error(`Observer failed: could not find node for target '${harvestStrategy.observeTarget}'`));
       }
-
-      let lastContent = '';
-      let stabilityTimer = null;
-      const STABILITY_DELAY = 2000; // Wait 2s after content stops changing
-      let contentChecks = 0;
-      const MAX_CONTENT_CHECKS = 3; // Require 3 stable checks
-
-      const observer = new MutationObserver(() => {
-        // Check completion markers first (highest priority)
-        if (isResponseComplete()) {
-          clearTimeout(stabilityTimer);
-          observer.disconnect();
-          const content = finalScrape();
-          console.log(`[Sidecar Harvest - ${platformKey}] ✅ Completion marker detected.`);
-          return resolve(content || 'Response completed but content not found');
-        }
-
-        // Fallback: Content stability detection
-        const currentContent = finalScrape();
-        if (currentContent && currentContent.length > 20) { // Minimum viable content
-          if (currentContent === lastContent) {
-            contentChecks++;
-            if (contentChecks >= MAX_CONTENT_CHECKS) {
-              clearTimeout(stabilityTimer);
-              observer.disconnect();
-              console.log(`[Sidecar Harvest - ${platformKey}] ✅ Content stable after ${MAX_CONTENT_CHECKS} checks.`);
-              return resolve(currentContent);
-            }
-          } else {
-            // Content changed, reset stability tracking
-            lastContent = currentContent;
-            contentChecks = 0;
-            clearTimeout(stabilityTimer);
-            
-            // Set new stability timer
-            stabilityTimer = setTimeout(() => {
-              observer.disconnect();
-              console.log(`[Sidecar Harvest - ${platformKey}] ✅ Content stable for ${STABILITY_DELAY}ms - assuming complete.`);
-              resolve(currentContent);
-            }, STABILITY_DELAY);
+      try {
+        observer = new MutationObserver(() => {
+          if (signal?.aborted) {
+            cleanup();
+            return reject(new Error('Observer aborted'));
           }
-        }
-      });
-
-      observer.observe(targetNode, { 
-        childList: true, 
-        subtree: true, 
-        characterData: true 
-      });
-
-      // Failsafe timeout
-      setTimeout(() => {
-        clearTimeout(stabilityTimer);
-        observer.disconnect();
-        const lastTryContent = finalScrape();
-        if (lastTryContent && lastTryContent.length > 20) {
-          console.log(`[Sidecar Harvest - ${platformKey}] ⚠️ Timeout reached, returning available content.`);
-          resolve(lastTryContent);
+          if (checkForCompletion()) {
+            console.log(`[Sidecar Harvest - ${platformKey}] ✅ Completion marker detected by observer.`);
+            cleanup();
+            // Stabilization delay before scraping
+            setTimeout(() => {
+              if (!signal?.aborted) {
+                resolve(this.#performScrape());
+              }
+            }, 2000); // Changed to 2 seconds
+          }
+        });
+        observer.observe(targetNode, { 
+          childList: true, 
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['data-is-streaming', 'class']
+        });
+      } catch (error) {
+        cleanup();
+        return reject(new Error(`Failed to create observer: ${error.message}`));
+      }
+      // STEP 3: Failsafe timeout
+      failsafeTimeout = setTimeout(() => {
+        console.warn(`[Sidecar Harvest - ${platformKey}] ⚠️ Observer timed out after ${harvestStrategy.timeout}ms`);
+        cleanup();
+        // Final attempt at scraping
+        const result = this.#performScrape();
+        if (result) {
+          resolve(result);
         } else {
-          reject(new Error(`Observer timed out after ${harvestStrategy.timeout}ms with insufficient content.`));
+          reject(new Error(`Observer timed out and no content found`));
         }
-      }, harvestStrategy.timeout);
+      }, harvestStrategy.timeout || 45000);
     });
+  }
+
+  /**
+   * Centralized scraping logic with enhanced element detection
+   */
+  #performScrape() {
+    const { selectors } = this.config;
+    const responseSelector = selectors.responseContainer;
+    if (!responseSelector || !Array.isArray(responseSelector)) {
+      throw new Error('Invalid responseContainer selector configuration');
+    }
+    const responseElements = document.querySelectorAll(responseSelector.join(','));
+    if (responseElements.length === 0) {
+      return null;
+    }
+    // Get the last response element
+    const lastElement = responseElements[responseElements.length - 1];
+    // Multiple extraction attempts
+    const extractionStrategies = [
+      () => lastElement.textContent?.trim(),
+      () => lastElement.innerText?.trim(),
+      () => lastElement.querySelector('.markdown, .prose, [class*="message"]')?.textContent?.trim(),
+      () => Array.from(lastElement.childNodes)
+        .filter(node => node.nodeType === Node.TEXT_NODE)
+        .map(node => node.textContent?.trim())
+        .filter(Boolean)
+        .join(' ')
+    ];
+    for (const strategy of extractionStrategies) {
+      try {
+        const result = strategy();
+        if (result && result.length > 0) {
+          return result;
+        }
+      } catch (error) {
+        console.warn('[Sidecar] Text extraction strategy failed:', error);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Utility methods for result handling
+   */
+  #normalizeResult(rawResult, strategyName) {
+    if (typeof rawResult === 'string' && rawResult.length > 0) {
+      return {
+        success: true,
+        data: rawResult,
+        meta: { strategy: strategyName }
+      };
+    }
+    if (rawResult && typeof rawResult === 'object' && rawResult.success) {
+      return { ...rawResult, meta: { ...rawResult.meta, strategy: strategyName } };
+    }
+    return this.#createErrorResult(`${strategyName} returned no usable result`, { strategy: strategyName });
+  }
+
+  #createErrorResult(message, meta = {}) {
+    return {
+      success: false,
+      error: message,
+      meta
+    };
+  }
+
+  #enrichResult(result, additionalMeta) {
+    return {
+      ...result,
+      meta: { ...result.meta, ...additionalMeta }
+    };
+  }
+
+  #cancelRemainingControllers(controllers) {
+    controllers.forEach(controller => {
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
+      this.activeControllers.delete(controller);
+    });
+  }
+
+  #abortableDelay(ms, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        return reject(new Error('Delay aborted'));
+      }
+      const timeout = setTimeout(() => {
+        signalListener && signal?.removeEventListener('abort', signalListener);
+        resolve();
+      }, ms);
+      const signalListener = signal ? () => {
+        clearTimeout(timeout);
+        reject(new Error('Delay aborted'));
+      } : null;
+      if (signalListener) {
+        signal.addEventListener('abort', signalListener);
+      }
+    });
+  }
+
+  /**
+   * Cleanup method for graceful shutdown
+   */
+  destroy() {
+    // Cancel all active operations
+    this.activeControllers.forEach(controller => {
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
+    });
+    this.activeControllers.clear();
   }
 }
 
-// Instantiate and export the singleton provider.
+// Instantiate and export the singleton provider
 let providerInstance;
 try {
   providerInstance = new Provider();
@@ -264,4 +437,5 @@ try {
   console.error('[Sidecar] Provider initialization failed:', e);
   providerInstance = null;
 }
+
 export { providerInstance as provider };

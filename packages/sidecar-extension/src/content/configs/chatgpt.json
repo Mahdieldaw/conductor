@@ -12,7 +12,7 @@
     ],
     "responseContainer": [
       "div[data-message-author-role='assistant']:last-of-type .markdown",
-      "div[data-message-author-role='assistant']:last-of-type"
+      "div[data-message-author-role='assistant']:last-of-type div[class*='prose']"
     ],
     "conversationWrapper": [
       "main",
@@ -33,8 +33,11 @@
     { "action": "click", "target": "sendButton" }
   ],
   "harvestStrategy": {
-    "method": "observer",
+    "method": "concurrent",
     "observeTarget": "conversationWrapper",
-    "timeout": 45000
+    "timeout": 45000,
+    "maxAttempts": 8,
+    "baseDelay": 1000,
+    "backoffMultiplier": 1.2
   }
 }
