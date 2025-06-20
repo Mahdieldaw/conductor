@@ -174,6 +174,34 @@ class Provider {
   }
 
   /**
+   * New method to programmatically start a new chat.
+   */
+  async startNewChat() {
+    const { platformKey, selectors } = this.config;
+    const newChatSelectors = selectors.newChat;
+
+    if (!newChatSelectors || newChatSelectors.length === 0) {
+      console.error(`[Sidecar NewChat - ${platformKey}] No 'newChat' selectors defined in config.`);
+      return { success: false, error: "No 'newChat' selector configured for this provider." };
+    }
+
+    try {
+      console.log(`[Sidecar NewChat - ${platformKey}] Attempting to click new chat button.`);
+      const element = await this.#waitForElement(newChatSelectors, 3000); // Use a shorter timeout
+      if (element) {
+        element.click();
+        console.log(`[Sidecar NewChat - ${platformKey}] Successfully clicked new chat button.`);
+        return { success: true };
+      } else {
+        throw new Error("New chat button not found on page.");
+      }
+    } catch (error) {
+      console.error(`[Sidecar NewChat - ${platformKey}] Error starting new chat:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Concurrent harvest execution - both methods race, winner takes all
    */
   async #executeConcurrentHarvest() {
