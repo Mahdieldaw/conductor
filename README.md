@@ -76,96 +76,73 @@ pnpm install
 
 ## Phase 3: Integration & Core Reliability (Current Focus) 🔄
 
-**Goal:** Implement the complete, reliable connection from the UI to a target tab, including readiness and session architecture.
+**Goal:** Achieve a fully reliable, session-aware, and robust connection from the UI to LLM tabs, with advanced error handling and session management.
 
-- [x] Connect UI to SidecarService: Wire the main PromptComposer to the newly refactored executePrompt service.
-- [x] Implement Basic WorkflowRunner.js: Initial scaffolding for executing simple, single-prompt "recipes".
-- [x] State Management & Result Display: Implement the UI for displaying a single response from a successful execution.
+- [x] Connect UI to SidecarService: Wire PromptComposer to the refactored executePrompt service.
+- [x] Implement Basic WorkflowRunner.js for single-prompt recipes.
+- [x] State Management & Result Display: UI for displaying responses.
+- [x] Implement TabSessionManager:
+  - [x] Create `tab-manager.js` for tab tracking.
+  - [x] Create `tab-session-manager.js` for per-tab session IDs using `chrome.storage.session`.
+  - [x] Integrate session reset and new chat logic (`startNewChat`) across UI, service worker, and content scripts.
+- [x] Refactor SidecarService and Service Worker:
+  - [x] Remove "always-reload" behavior.
+  - [x] Integrate getSession/resetSession logic based on UI toggle.
+  - [x] Normalize all provider responses for robust error handling.
 - [ ] Build the Three-Stage Readiness Pipeline:
-  - Implement the <ReadinessGate> UI component and useReadinessFlow hook.
-  - Develop service worker logic for findOrPromptTab, ensureTabIsReady, and progressive recovery (reload) functions.
-  - Create readiness-detector.js content script with platform-specific loginMarkers and readyMarkers.
-- [ ] Implement the TabSessionManager:
-  - Create tab-manager.js to handle creating, retrieving, and clearing per-tab sessionIds using chrome.storage.session.
-- [ ] Refactor SidecarService.executePrompt:
-  - Remove "always-reload" behavior.
-  - Integrate getSession/resetSession logic based on the continueChat UI toggle.
+  - [ ] Implement `<ReadinessGate>` UI and `useReadinessFlow` hook.
+  - [ ] Add service worker logic for tab readiness and recovery.
+  - [ ] Add readiness-detector.js content script with login/ready markers.
 
 ## Phase 4: Technical Hardening & Observability 🛡️
 
-**Goal:** Solidify the foundation with robust error handling, logging, and support for multiple providers.
+**Goal:** Strengthen error handling, logging, and support for more providers.
 
-- [ ] Harmonize Error Messages: Implement error-classifier.js to ensure errors from the Readiness Pipeline (e.g., tab_not_open, login_required) are cleanly handled and displayed in the UI.
-- [ ] Implement Simple Logging Bus: Capture key events from the Readiness Pipeline and executePrompt (e.g., "Gate 1 Passed," "Session Reset," "Prompt Executed").
-- [ ] Surface "Step X of N" Progress in UI: Initially, this will apply to the Readiness Pipeline gates ("Step 1 of 3: Checking for open tab...").
-- [ ] Add Support for Additional LLM Providers: Create new configuration files for ChatGPT, Gemini, etc., specifying their unique readiness markers for the pipeline.
-- [ ] UI/UX Polish: Refine the loading states and user guidance messages within the <ReadinessGate> component.
-- [ ] Implement advanced error recovery and retry strategies
-- [ ] Add detailed logging and analytics
-- [ ] Polish UI/UX and accessibility
-- [ ] Prepare for public release
+- [ ] Harmonize error messages and implement error-classifier.js.
+- [ ] Implement a logging bus for key events and step progress.
+- [ ] Surface "Step X of N" progress in UI.
+- [ ] Add support for more LLM providers (e.g., Gemini, Perplexity).
+- [ ] UI/UX polish for readiness and error states.
+- [ ] Advanced error recovery and retry strategies.
+- [ ] Add analytics and detailed logging.
+- [ ] Prepare for public release.
 
 ## Phase 5: Persistent Memory & Advanced Workflows 🧠
 
-**Goal:** Move beyond single-shot prompts to multi-step workflows with persistent history.
+**Goal:** Enable multi-step workflows and persistent session history.
 
-- [ ] Implement Persistent Memory (chrome.storage.local): Cache the last 10 sessions. A "session" is now defined by its sessionId and includes the initial prompt, the final output, and trace logs.
-- [ ] Add Advanced Workflow Features: Enhance WorkflowRunner.js to handle multi-step workflows. The Readiness Pipeline + Session ID pattern now ensures that each step in a workflow can be reliably executed against the target tab.
-- [ ] Add New Workflow Types: Define "compare" or "critique" workflows as JSON contracts.
-- [ ] Automate contract testing for each workflow to prevent regressions and ensure reliability
-- [ ] Lay groundwork for a more advanced memory layer in future phases
+- [ ] Implement persistent memory (chrome.storage.local) for session history.
+- [ ] Enhance WorkflowRunner.js for multi-step workflows.
+- [ ] Add new workflow types (compare, critique) as JSON contracts.
+- [ ] Automate contract testing for workflows.
+- [ ] Lay groundwork for advanced memory layers.
 
 ## Phase 6: Extension Infrastructure & Metrics 📊
 
-**Status: PLANNED**
+**Goal:** Automate testing and instrument key metrics.
 
-- [ ] Automate extension reload and end-to-end workflow tests in a headless browser
-- [ ] Instrument a dashboard to track key metrics (trust score, MVI accuracy, time-to-first-synthesis, engagement, retention, adoption rate)
-- [ ] Use these metrics to guide further technical and product decisions
+- [ ] Automate extension reload and end-to-end workflow tests.
+- [ ] Instrument dashboard for trust, accuracy, engagement, etc.
+- [ ] Use metrics to guide product decisions.
 
 ## Phase 7: Advanced Memory & Provider Abstraction (Future) 🚀
 
-**Status: FUTURE**
+**Goal:** Build scalable memory and plugin architecture.
 
-- [ ] Build a Phase 3 memory layer with cold storage and vector indexing for semantic search
-- [ ] Develop a plugin architecture for supporting both content-script and API-based providers
+- [ ] Implement cold storage and vector indexing for semantic search.
+- [ ] Develop plugin architecture for content-script and API-based providers.
 
 ---
 
-## Technical Implementation Roadmap (Summary)
 
-1. **Isolate & Harden Core Services**
-   - Refactor IntentService and WorkflowRunner out of the monolithic service worker into dedicated, unit-tested modules.
-   - Define a versioned intent schema to ensure consistent interpretation of user intent.
-   - This reduces the risk of service worker bloat and misinterpretation in the Model-View-Intent (MVI) engine.
-2. **Expand & Validate Workflow Library**
-   - Add new workflow types (e.g., “compare”, “critique”) as JSON contracts.
-   - Automate contract testing for each workflow to prevent regressions and ensure reliability.
-3. **Implement Persistent Memory**
-   - Use chrome.storage.local to cache the last 10 sessions, including prompts, outputs, and trace logs.
-   - Lays the groundwork for a more advanced memory layer in future phases.
-4. **Observability & Traceability**
-   - Implement a simple logging bus for capturing intermediate outputs and step-by-step status.
-   - Surface “step X of N” progress in the UI to improve transparency and user trust.
-5. **Robust Extension & Testing Infrastructure**
-   - Automate extension reload and end-to-end workflow tests in a headless browser.
-   - Harmonize error messages between the sidecar extension and the UI for a seamless user experience.
-6. **Advanced Memory & Provider Abstraction (Future)**
-   - Build a Phase 3 memory layer with cold storage and vector indexing for semantic search.
-   - Develop a plugin architecture for supporting both content-script and API-based providers.
-7. **Metrics & Risk Mitigation**
-   - Instrument a dashboard to track key metrics (trust score, MVI accuracy, time-to-first-synthesis, engagement, retention, adoption rate).
-   - Use these metrics to guide further technical and product decisions.
+## Technical Implementation Notes
 
-### Immediate Next Steps
-
-- Refactor IntentService and WorkflowRunner as standalone modules.
-- Build a demo of the synthesis loop for marketing and user onboarding.
-- Set up the KPI dashboard before beta launch.
-- Launch the insider beta and collect real user feedback to iterate on technical and UX issues.
-
-**In summary:**
-The technical roadmap is tightly coupled to user experience goals, with a focus on modularizing core logic, expanding and testing workflows, adding persistent memory, improving observability, and building robust infrastructure for future growth and risk mitigation.
+- **Core Services:** IntentService and WorkflowRunner are being modularized for maintainability and testability.
+- **Workflow Library:** New workflow types (e.g., compare, critique) will be added as JSON contracts and tested automatically.
+- **Persistent Memory:** Session history will be stored using `chrome.storage.local` to enable advanced memory features.
+- **Observability:** Logging and step-by-step progress will be surfaced in the UI for transparency and debugging.
+- **Testing & Infrastructure:** Automated tests and error harmonization will ensure reliability across extension and web app.
+- **Metrics:** Key metrics (trust, accuracy, engagement) will be instrumented to guide product decisions.
 
 ### Shared Messaging Package
 
@@ -173,22 +150,15 @@ The `@hybrid-thinking/messaging` package exports the following message type cons
 
 - `PING` - Health check message
 - `EXECUTE_PROMPT` - Execute a prompt on an LLM platform
+- `HARVEST_RESPONSE` - Harvest the latest response from a provider
+- `BROADCAST_PROMPT` - Send a prompt without harvesting
 - `TASK_COMPLETE` - Indicates a task has finished
+- `GET_AVAILABLE_TABS` - List all detected LLM tabs
+- `RESET_SESSION` - Reset session for a provider/tab
+- `START_NEW_CHAT` - Trigger new chat in content script
+
+---
 
 ## Next Steps
 
-### Phase 1: Building the Sidecar Extension
-- Scaffold the extension with Vite and web-extension plugin
-- Integrate salvaged Provider and Detector logic from Conductor AI
-- Implement ServiceWorker.js and content.js
-- Create test harness for validation
-
-### Phase 2: Building the Web App (Control Panel)
-- Scaffold with SvelteKit and Tailwind CSS
-- Implement SidecarService.js for extension communication
-- Build Settings page and main interface
-
-### Phase 3: Integration & Workflow Execution
-- Connect UI to SidecarService
-- Implement WorkflowRunner.js for recipe execution
-- Add state management and result display
+See the [Phases](#phase-3-integration--core-reliability-current-focus-) section above for the current roadmap and priorities.
