@@ -24,6 +24,8 @@ export const PromptCanvas: React.FC = () => {
     responses: new Map(),
   });
   
+  const [startNewChat, setStartNewChat] = useState(true);
+
   // This state holds the list of providers and their *live* status.
   const [providers, setProviders] = useState<Provider[]>([]);
   const isExecuting = promptState.status === 'executing';
@@ -50,7 +52,6 @@ export const PromptCanvas: React.FC = () => {
       }
     } catch (error) {
       console.error("Failed to fetch available providers:", error);
-      // Here you could add UI to show this error to the user
     }
   }, [promptState.targetProviders.length]);
 
@@ -75,36 +76,54 @@ export const PromptCanvas: React.FC = () => {
     const targets = promptState.targetProviders;
     if (targets.length === 0) return;
 
-    // 1. Initialize UI state for all targets to 'pending'.
-    // This provides immediate user feedback that work has started.
-    const initialResponses = new Map(
-      targets.map(id => [id, { status: 'pending' }])
-    );
-    updatePromptState({ status: 'executing', responses: initialResponses });
+    updatePromptState({ status: 'executing', responses: new Map() });
 
-    // 2. Create an array of execution promises.
+    // *** NEW LOGIC: RESET SESSIONS IF REQUIRED ***
+    if (startNewChat) {
+      console.log('Starting new chats for all target providers...');
+      const resetPromises = targets.map(providerId => 
+        sidecarService.resetSession(providerId).catch(err => ({
+          providerId,
+          status: 'error',
+          error: err.message
+        }))
+      );
+      // We can optionally handle errors from reset here, but for now we proceed.
+      await Promise.allSettled(resetPromises);
+      console.log('All targeted providers have been instructed to start a new chat.');
+    }
+    // *** END OF NEW LOGIC ***
+
+    // Initialize UI state for all targets to 'pending'.
+    const initialResponses = new Map(
+      targets.map(id => [id, { status: 'pending' } as ResponseState])
+    );
+    updatePromptState({ responses: initialResponses });
+  
+    // Create an array of execution promises.
     const executionPromises = targets.map(providerId =>
       sidecarService.executePrompt(providerId, promptState.text)
+        .then(value => ({ status: 'fulfilled', value, providerId }))
+        .catch(reason => ({ status: 'rejected', reason, providerId }))
     );
+  
+    // Reconcile results one by one as they complete for better real-time feedback
+    for (const promise of executionPromises) {
+      const result = await promise;
+      setPromptState(prev => {
+        const newResponses = new Map(prev.responses);
+        if ('value' in result) {
+          newResponses.set(result.providerId, { status: 'completed', data: result.value });
+        } else if ('reason' in result) {
+          newResponses.set(result.providerId, { status: 'error', error: result.reason?.message || String(result.reason) });
+        }
+        return { ...prev, responses: newResponses };
+      });
+    }
 
-    // 3. Await all results using Promise.allSettled for maximum robustness.
-    const results = await Promise.allSettled(executionPromises);
+    updatePromptState({ status: 'completed' });
 
-    // 4. Reconcile all results back into the state map.
-    // This is a single, efficient batch update to prevent multiple re-renders.
-    const finalResponses = new Map(initialResponses); // Start from a clean slate
-    results.forEach((result, index) => {
-      const providerId = targets[index];
-      if (result.status === 'fulfilled') {
-        finalResponses.set(providerId, { status: 'completed', data: result.value });
-      } else {
-        // Capture the error message for display in the UI.
-        finalResponses.set(providerId, { status: 'error', error: result.reason.message });
-      }
-    });
-
-    updatePromptState({ status: 'completed', responses: finalResponses });
-  }, [promptState]);
+  }, [promptState.targetProviders, promptState.text, startNewChat]);
 
   const handleInsertTemplate = (templateText: string) => {
     updatePromptState({
@@ -147,6 +166,23 @@ export const PromptCanvas: React.FC = () => {
                 disabled={isExecuting}
               />
               
+              <div className="flex items-center gap-2 pl-1">
+                <input
+                  type="checkbox"
+                  id="start-new-chat-toggle"
+                  checked={startNewChat}
+                  onChange={(e) => setStartNewChat(e.target.checked)}
+                  disabled={isExecuting}
+                  className="w-4 h-4 rounded bg-slate-700 border-slate-600 text-indigo-500 focus:ring-indigo-600 cursor-pointer disabled:cursor-not-allowed"
+                />
+                <label
+                  htmlFor="start-new-chat-toggle"
+                  className={`text-sm ${isExecuting ? 'text-slate-500' : 'text-slate-300 cursor-pointer'}`}
+                >
+                  Start a new chat for each provider (clears context)
+                </label>
+              </div>
+
               <div className="h-[1px] bg-white/10 w-full"></div>
 
               <ExecutionController
@@ -155,7 +191,7 @@ export const PromptCanvas: React.FC = () => {
                 onClear={handleClear}
                 onEdit={handleEdit}
                 onRetry={handleRetry}
-                onAddProvider={fetchAndUpdateProviderStatus} // Re-scan for providers
+                onAddProvider={fetchAndUpdateProviderStatus}
               />
             </div>
             

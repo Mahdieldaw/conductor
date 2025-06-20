@@ -3,7 +3,8 @@ import {
   GET_AVAILABLE_TABS,
   EXECUTE_PROMPT, 
   HARVEST_RESPONSE,
-  BROADCAST_PROMPT
+  BROADCAST_PROMPT,
+  RESET_SESSION
 } from '@hybrid-thinking/messaging';
 
 // This service is a singleton that abstracts all communication with the Sidecar Extension.
@@ -75,6 +76,19 @@ class SidecarService {
    */
   async getAvailableTabs() {
     return this.#sendMessage({ type: GET_AVAILABLE_TABS });
+  }
+  
+  /**
+   * Resets the session for a given provider, which forces a new chat on the provider UI
+   * and generates a new session ID in the extension's backend.
+   * @param {string} platform - The key for the target platform (e.g., 'chatgpt').
+   * @returns {Promise<{newSessionId: string}>} The new session ID.
+   */
+  async resetSession(platform) {
+    return this.#sendMessage({
+      type: RESET_SESSION,
+      payload: { platform },
+    });
   }
 
   /**

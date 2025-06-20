@@ -2,6 +2,10 @@
   "platformKey": "chatgpt",
   "hostnames": ["chat.openai.com", "chatgpt.com"],
   "selectors": {
+    "newChat": [
+      "a[href='/']",
+      "button[data-testid='new-chat-button']"
+    ],
     "input": [
       "#prompt-textarea",
       "textarea[data-id='root']"

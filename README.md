@@ -74,39 +74,46 @@ pnpm install
 - [x] Implement parallel prompt execution and robust state management
 - [x] Add error handling and retry logic for individual providers
 
-## Phase 3: Integration & Workflow Execution 🔄
+## Phase 3: Integration & Core Reliability (Current Focus) 🔄
 
-**Status: IN PROGRESS**
+**Goal:** Implement the complete, reliable connection from the UI to a target tab, including readiness and session architecture.
 
-- [x] Connect UI to SidecarService
-- [x] Implement WorkflowRunner.js for recipe execution
-- [x] Add state management and result display
-- [ ] Add advanced workflow features (multi-step, branching, etc.)
-- [ ] Enhance UX for long-running and partial results
-- [ ] Add persistent settings and provider configuration
+- [x] Connect UI to SidecarService: Wire the main PromptComposer to the newly refactored executePrompt service.
+- [x] Implement Basic WorkflowRunner.js: Initial scaffolding for executing simple, single-prompt "recipes".
+- [x] State Management & Result Display: Implement the UI for displaying a single response from a successful execution.
+- [ ] Build the Three-Stage Readiness Pipeline:
+  - Implement the <ReadinessGate> UI component and useReadinessFlow hook.
+  - Develop service worker logic for findOrPromptTab, ensureTabIsReady, and progressive recovery (reload) functions.
+  - Create readiness-detector.js content script with platform-specific loginMarkers and readyMarkers.
+- [ ] Implement the TabSessionManager:
+  - Create tab-manager.js to handle creating, retrieving, and clearing per-tab sessionIds using chrome.storage.session.
+- [ ] Refactor SidecarService.executePrompt:
+  - Remove "always-reload" behavior.
+  - Integrate getSession/resetSession logic based on the continueChat UI toggle.
 
 ## Phase 4: Technical Hardening & Observability 🛡️
 
-**Status: PLANNED**
+**Goal:** Solidify the foundation with robust error handling, logging, and support for multiple providers.
 
-- [ ] Add detailed logging and analytics (Observability & Traceability)
+- [ ] Harmonize Error Messages: Implement error-classifier.js to ensure errors from the Readiness Pipeline (e.g., tab_not_open, login_required) are cleanly handled and displayed in the UI.
+- [ ] Implement Simple Logging Bus: Capture key events from the Readiness Pipeline and executePrompt (e.g., "Gate 1 Passed," "Session Reset," "Prompt Executed").
+- [ ] Surface "Step X of N" Progress in UI: Initially, this will apply to the Readiness Pipeline gates ("Step 1 of 3: Checking for open tab...").
+- [ ] Add Support for Additional LLM Providers: Create new configuration files for ChatGPT, Gemini, etc., specifying their unique readiness markers for the pipeline.
+- [ ] UI/UX Polish: Refine the loading states and user guidance messages within the <ReadinessGate> component.
 - [ ] Implement advanced error recovery and retry strategies
-- [ ] Add support for additional LLM providers
+- [ ] Add detailed logging and analytics
 - [ ] Polish UI/UX and accessibility
 - [ ] Prepare for public release
-- [ ] Implement a simple logging bus for capturing intermediate outputs and step-by-step status
-- [ ] Surface “step X of N” progress in the UI to improve transparency and user trust
-- [ ] Harmonize error messages between the sidecar extension and the UI for a seamless user experience
 
 ## Phase 5: Persistent Memory & Advanced Workflows 🧠
 
-**Status: PLANNED**
+**Goal:** Move beyond single-shot prompts to multi-step workflows with persistent history.
 
-- [ ] Implement persistent memory using chrome.storage.local to cache the last 10 sessions, including prompts, outputs, and trace logs
-- [ ] Lay groundwork for a more advanced memory layer in future phases
-- [ ] Add advanced workflow features (multi-step, branching, etc.)
-- [ ] Add new workflow types (e.g., “compare”, “critique”) as JSON contracts
+- [ ] Implement Persistent Memory (chrome.storage.local): Cache the last 10 sessions. A "session" is now defined by its sessionId and includes the initial prompt, the final output, and trace logs.
+- [ ] Add Advanced Workflow Features: Enhance WorkflowRunner.js to handle multi-step workflows. The Readiness Pipeline + Session ID pattern now ensures that each step in a workflow can be reliably executed against the target tab.
+- [ ] Add New Workflow Types: Define "compare" or "critique" workflows as JSON contracts.
 - [ ] Automate contract testing for each workflow to prevent regressions and ensure reliability
+- [ ] Lay groundwork for a more advanced memory layer in future phases
 
 ## Phase 6: Extension Infrastructure & Metrics 📊
 
