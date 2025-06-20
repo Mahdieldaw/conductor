@@ -128,4 +128,112 @@ async function handleHarvestResponse({ platform }) {
   }
 }
 
+// --- Port-based Listener for stateful flows (Readiness Pipeline) ---
+chrome.runtime.onConnect.addListener(port => {
+  console.log(`[Service Worker] Connection established for: ${port.name}`);
+  if (port.name === 'readiness-pipeline') {
+    port.onMessage.addListener(msg => {
+      if (msg.action === 'CHECK_READINESS') {
+        executeReadinessPipeline(msg.providerKey, port);
+      }
+      if (msg.action === 'RESET_SESSION') {
+        tabSessionManager.resetSession(msg.tabId)
+          .then(newSessionId => port.postMessage({
+            status: 'SESSION_RESET',
+            data: { newSessionId }
+          }))
+          .catch(error => port.postMessage({
+            status: 'ERROR',
+            message: error.message
+          }));
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      console.log('[Service Worker] Readiness pipeline port disconnected.');
+    });
+  }
+});
+
+// Load the provider’s JSON config (loginMarkers, readyMarkers, etc.)
+async function getProviderConfig(providerKey) {
+  const url = chrome.runtime.getURL(`content/configs/${providerKey}.json`);
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Config not found: ${providerKey}`);
+    return resp.json();
+  } catch (e) {
+    console.error(`Failed to load config for ${providerKey}:`, e);
+    return null;
+  }
+}
+
+async function executeReadinessPipeline(providerKey, port) {
+  const config = await getProviderConfig(providerKey);
+  if (!config) {
+    port.postMessage({
+      step: 0,
+      status: 'ERROR',
+      message: `Configuration for '${providerKey}' not found.`
+    });
+    return;
+  }
+
+  // Gate 1: Tab open?
+  port.postMessage({
+    step: 1,
+    status: 'PENDING',
+    message: `Checking for open ${config.name || config.platformKey} tab…`
+  });
+  const tab = tabManager.findTabByPlatform(providerKey);
+  if (!tab) {
+    port.postMessage({
+      step: 1,
+      status: 'TAB_NOT_OPEN',
+      message: `${config.name || config.platformKey} tab is not open.`,
+      data: { url: config.url }
+    });
+    return;
+  }
+
+  // Gate 2: Readiness check
+  port.postMessage({
+    step: 2,
+    status: 'PENDING',
+    message: `Verifying ${config.name || config.platformKey} is ready…`
+  });
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId: tab.tabId },
+      func: cfg => window.hybrid.checkReadiness(cfg),
+      args: [config]
+    });
+    const { status, message } = result.result || {};
+    if (status === 'READY') {
+      // Gate 3: Session ID
+      port.postMessage({
+        step: 3,
+        status: 'PENDING',
+        message: 'Fetching session ID…'
+      });
+      const sessionId = await tabSessionManager.getSession(tab.tabId);
+      port.postMessage({
+        step: 3,
+        status: 'READY',
+        message: 'Connection successful!',
+        data: { tabId: tab.tabId, sessionId }
+      });
+    } else {
+      // Not ready (login required, needs attention, etc.)
+      port.postMessage({ step: 2, status, message, data: { url: config.url } });
+    }
+  } catch (err) {
+    console.error('Readiness pipeline error:', err);
+    port.postMessage({
+      step: 2,
+      status: 'ERROR',
+      message: `Failed to check readiness: ${err.message}.`
+    });
+  }
+}
+
 console.log('Hybrid Thinking OS Sidecar - Resilient Service Worker loaded.');

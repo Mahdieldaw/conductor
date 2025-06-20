@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { sidecarService } from './services/SidecarService';
 import { PromptCanvas } from './components/PromptCanvas'; // We will create this next
+import { ReadinessGate } from './components/ReadinessGate';
 
 // A simple component to get the Extension ID from the developer
 const ExtensionConnector = ({ onConnect }) => {
@@ -45,10 +46,18 @@ const ExtensionConnector = ({ onConnect }) => {
 };
 
 export default function App() {
+  const [connection, setConnection] = useState<null | { tabId: number; sessionId: string }>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState({
     status: 'idle', // idle | connecting | connected | error
     error: null,
   });
+
+  // Example provider list for MVP
+  const providers = [
+    { key: 'chatgpt', name: 'ChatGPT' },
+    { key: 'claude', name: 'Claude' }
+  ];
 
   const handleConnect = async (extensionId) => {
     setConnectionState({ status: 'connecting', error: null });
@@ -60,12 +69,36 @@ export default function App() {
     }
   };
 
-  if (connectionState.status === 'connected') {
+  if (connection) {
     return <PromptCanvas />;
   }
-  
+
   return (
     <div>
+      {!selectedProvider && (
+        <div className="flex flex-col items-center mt-10">
+          <h2 className="text-xl font-bold mb-2">1. Choose Provider</h2>
+          <div className="flex gap-4">
+            {providers.map(p => (
+              <button key={p.key} onClick={() => setSelectedProvider(p.key)} className="bg-indigo-600 text-white px-4 py-2 rounded">
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {selectedProvider && !connection && (
+        <>
+          <h2 className="text-xl font-bold mt-8 mb-2">2. Connect</h2>
+          <ReadinessGate
+            providerKey={selectedProvider}
+            onReady={({ tabId, sessionId }) => {
+              setConnection({ tabId, sessionId });
+              // updatePromptState({ targetProviders: [selectedProvider] }); // Uncomment if needed
+            }}
+          />
+        </>
+      )}
       {connectionState.status !== 'connected' && <ExtensionConnector onConnect={handleConnect} />}
       {connectionState.status === 'connecting' && <p className="text-center text-blue-400 mt-4">Connecting...</p>}
       {connectionState.status === 'error' && <p className="text-center text-red-400 mt-4">Connection Failed: {connectionState.error}</p>}

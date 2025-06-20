@@ -14,7 +14,10 @@
         "*://*.claude.ai/*",
         "*://*.console.anthropic.com/*"
       ],
-      "js": ["content/content.js"]
+      "js": [
+        "content/readiness-detector.js",
+        "content/content.js"
+      ]
     }
   ],
   "host_permissions": [
