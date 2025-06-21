@@ -20,27 +20,72 @@ console.log('[TabManager] Initialized with hostname mapping:', hostnameToPlatfor
 class TabManager {
   constructor() {
     this.tabs = new Map();
-    // A promise that resolves when the initial tab scan is complete.
-    this.ready = this.initialize();
+    this.initializeListeners();
+    console.log('[TabManager] Initialized and listeners attached.');
   }
 
-  async initialize() {
-    console.log('[TabManager] Starting initial tab scan...');
+  initializeListeners() {
     chrome.tabs.onUpdated.addListener(this.handleTabUpdated.bind(this));
     chrome.tabs.onRemoved.addListener(this.handleTabRemoved.bind(this));
-    
-    try {
-      const allTabs = await chrome.tabs.query({});
-      for (const tab of allTabs) {
-        if (tab.id && tab.url) {
-          this.addOrUpdateTab(tab.id, tab.url);
+  }
+  
+  // This is now the primary method to get a tab, handling the async query internally.
+  async findTabByPlatform(platformKey) {
+    // First, try to find a recently active tab from our cache.
+    let candidates = [];
+    for (const tab of this.tabs.values()) {
+        if (tab.platformKey === platformKey) {
+            candidates.push(tab);
         }
-      }
-    } catch (e) {
-      console.error('[TabManager] Failed to query tabs during initialization:', e);
     }
     
-    console.log('[TabManager] Initialization complete.');
+    // Sort by last activity to get the most recent one.
+    if (candidates.length > 0) {
+        candidates.sort((a, b) => b.lastActivity - a.lastActivity);
+        const mostRecentCachedTab = candidates[0];
+        
+        // Quick verification check to see if the tab still exists.
+        try {
+            await chrome.tabs.get(mostRecentCachedTab.tabId);
+            return mostRecentCachedTab; // Return from cache if it's still valid
+        } catch (e) {
+            // The tab was closed, remove it from our cache.
+            this.tabs.delete(mostRecentCachedTab.tabId);
+        }
+    }
+    
+    // If no valid tab was found in cache, query all tabs.
+    console.log(`[TabManager] No valid tab in cache for '${platformKey}'. Performing a full query.`);
+    const allTabs = await chrome.tabs.query({ url: `*://${platformKey === 'chatgpt' ? 'chat.openai.com' : 'claude.ai'}/*` });
+    
+    if (allTabs.length === 0) {
+        console.warn(`[TabManager] No tab found for platform: ${platformKey}`);
+        return undefined;
+    }
+    
+    // Update our cache with the newly found tabs
+    allTabs.forEach(tab => this.addOrUpdateTab(tab.id, tab.url));
+
+    // Return the first one found from the live query.
+    return this.tabs.get(allTabs[0].id);
+  }
+
+  getPlatformKey(hostname) {
+    if (hostname.includes('chat.openai.com')) return 'chatgpt';
+    if (hostname.includes('claude.ai')) return 'claude';
+    return null;
+  }
+
+  addOrUpdateTab(tabId, url) {
+    try {
+      const hostname = new URL(url).hostname;
+      const platformKey = this.getPlatformKey(hostname);
+      if (platformKey) {
+        this.tabs.set(tabId, { url, hostname, platformKey, tabId, lastActivity: Date.now() });
+      }
+    } catch (e) {
+      // Ignore invalid URLs
+    }
   }
 
   handleTabUpdated(tabId, changeInfo, tab) {
@@ -52,49 +97,8 @@ class TabManager {
   handleTabRemoved(tabId) {
     if (this.tabs.has(tabId)) {
       this.tabs.delete(tabId);
-      console.log(`[TabManager] Removed tab ${tabId}`);
+      console.log(`[TabManager] Removed tab ${tabId}.`);
     }
-  }
-
-  // Uses the robust mapping created from your config files.
-  getPlatformKey(hostname) {
-    return hostnameToPlatformMap.get(hostname);
-  }
-
-  addOrUpdateTab(tabId, url) {
-    try {
-      const hostname = new URL(url).hostname;
-      const platformKey = this.getPlatformKey(hostname);
-      if (platformKey) {
-        this.tabs.set(tabId, { url, hostname, platformKey, tabId, lastActivity: Date.now() });
-        console.log(`[TabManager] Added/Updated tab ${tabId} for platform '${platformKey}'`);
-      }
-    } catch (e) {
-      // This can happen for invalid URLs like 'about:blank', it's safe to ignore.
-    }
-  }
-
-  findTabByPlatform(platformKey) {
-    let latestTab = null;
-    for (const info of this.tabs.values()) {
-      if (info.platformKey === platformKey) {
-        if (!latestTab || info.lastActivity > latestTab.lastActivity) {
-            latestTab = info;
-        }
-      }
-    }
-    if (!latestTab) {
-      console.warn(`[TabManager] findTabByPlatform: No active tab found for key '${platformKey}'`);
-    }
-    return latestTab;
-  }
-
-  getTabById(tabId) {
-    return this.tabs.get(tabId);
-  }
-
-  getAllTabs() {
-    return Array.from(this.tabs.values());
   }
 }
 
