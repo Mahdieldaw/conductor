@@ -88,77 +88,62 @@ class Provider {
   async broadcast(prompt) {
     const { platformKey, broadcastStrategy, selectors } = this.config;
     console.log(`[Sidecar Broadcast - ${platformKey}] Executing ${broadcastStrategy.length}-step strategy.`);
-    const startTime = performance.now();
 
     for (const step of broadcastStrategy) {
-      const stepStartTime = performance.now();
-      const { action, target, value } = step;
+      // Destructure all possible properties from the config step
+      const { action, target, value, ms, timeout, retry } = step;
       const cssSelectorList = target ? selectors[target] : null;
 
-      console.log(`[Sidecar Broadcast - ${platformKey}] Running action: '${action}' on target: '${target || 'none'}'`);
+      console.log(`[Sidecar Broadcast - ${platformKey}] --> STEP: ${action} on target '${target || 'N/A'}'`);
 
       try {
         switch (action) {
           case 'fill': {
-            const el = await this.#waitForElement(cssSelectorList);
+            if (!cssSelectorList) throw new Error(`No selectors defined for target: ${target}`);
+            // Use the timeout from the JSON config, with a sensible default.
+            const el = await this.#waitForElement(cssSelectorList, timeout || 7000);
             this.#setElementText(el, value.replace('{{prompt}}', prompt));
             break;
           }
+
           case 'click': {
-            const el = this.#querySelector(cssSelectorList);
-            if (el && !el.disabled) {
-              el.click();
-            } else {
-              // Return a normalized failure object.
-              const stepDuration = performance.now() - stepStartTime;
-              return {
-                success: false,
-                error: `Click target '${target}' not found or was disabled.`,
-                meta: {
-                  step: action,
-                  target: target,
-                  duration: stepDuration
-                }
-              };
+            if (!cssSelectorList) throw new Error(`No selectors defined for target: ${target}`);
+            // Use the timeout from the JSON config.
+            const el = await this.#waitForElement(cssSelectorList, timeout || 5000);
+            if (el.disabled) {
+              // This is a specific failure case after the element is found.
+              throw new Error(`Element for target '${target}' was found but is disabled.`);
             }
+            el.click();
             break;
           }
-          case 'wait':
-            await new Promise(r => setTimeout(r, step.ms));
+
+          case 'wait': {
+            if (!ms) throw new Error("'wait' action requires an 'ms' property in config.");
+            await new Promise(r => setTimeout(r, ms));
             break;
+          }
+
           default:
-            console.warn(`[Sidecar Broadcast - ${platformKey}] Unknown action: '${action}'`);
+            throw new Error(`Unknown action in broadcastStrategy: '${action}'`);
         }
+        console.log(`[Sidecar Broadcast - ${platformKey}] <-- SUCCESS: ${action}`);
       } catch (error) {
-        console.error(`[Sidecar Broadcast - ${platformKey}] Error during action '${action}'`, error);
-        const stepDuration = performance.now() - stepStartTime;
-        // Return a normalized error object with rich metadata.
-        return {
-          success: false,
-          error: error.message,
-          meta: {
-            step: action,
-            target: target,
-            duration: stepDuration
-          }
-        };
+        const errorMessage = `Broadcast failed at step '${action}' on target '${target}'. Reason: ${error.message}`;
+        console.error(`[Sidecar Broadcast - ${platformKey}] ${errorMessage}`);
+        
+        // Re-throw to ensure the promise rejects and the failure is not silent.
+        throw new Error(errorMessage);
       }
     }
 
-    const totalDuration = performance.now() - startTime;
-    console.log(`[Sidecar Broadcast - ${platformKey}] Strategy execution complete.`);
-    // Return a normalized success object.
-    return {
-      success: true,
-      meta: {
-        duration: totalDuration
-      }
-    };
+    // This is only reached if every step in the strategy succeeds.
+    return { success: true };
   }
 
   /**
-   * Main harvest dispatcher with concurrent execution support
-   * Returns normalized { success: boolean, data?: string, error?: string, meta?: object }
+   * Main harvest dispatcher. It reads the "method" from the JSON config
+   * and delegates to the appropriate strategy. This is the public entry point.
    */
   async harvest() {
     const { harvestStrategy, platformKey } = this.config;
@@ -192,44 +177,17 @@ class Provider {
   }
 
   /**
-   * New method to programmatically start a new chat.
-   */
-  async startNewChat() {
-    const { platformKey, selectors } = this.config;
-    const newChatSelectors = selectors.newChat;
-
-    if (!newChatSelectors || newChatSelectors.length === 0) {
-      console.error(`[Sidecar NewChat - ${platformKey}] No 'newChat' selectors defined in config.`);
-      return { success: false, error: "No 'newChat' selector configured for this provider." };
-    }
-
-    try {
-      console.log(`[Sidecar NewChat - ${platformKey}] Attempting to click new chat button.`);
-      const element = await this.#waitForElement(newChatSelectors, 3000); // Use a shorter timeout
-      if (element) {
-        element.click();
-        console.log(`[Sidecar NewChat - ${platformKey}] Successfully clicked new chat button.`);
-        return { success: true };
-      } else {
-        throw new Error("New chat button not found on page.");
-      }
-    } catch (error) {
-      console.error(`[Sidecar NewChat - ${platformKey}] Error starting new chat:`, error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Concurrent harvest execution - both methods race, winner takes all
+   * Runs polling and observer strategies in parallel and returns the first
+   * successful result, cancelling the other. This is the most resilient approach.
    */
   async #executeConcurrentHarvest() {
     const { platformKey } = this.config;
     console.log(`[Sidecar Harvest - ${platformKey}] Starting concurrent harvest (polling vs observer)`);
-    // Create abort controllers for both strategies
     const pollingController = new AbortController();
     const observerController = new AbortController();
     this.activeControllers.add(pollingController);
     this.activeControllers.add(observerController);
+
     const pollingPromise = this.#executeStrategy('polling', 
       () => this.#harvestWithPolling(pollingController.signal),
       pollingController
@@ -238,28 +196,25 @@ class Provider {
       () => this.#harvestWithObserver(observerController.signal),
       observerController
     );
+
     try {
-      // Race the strategies - first successful result wins
       const result = await Promise.race([pollingPromise, observerPromise]);
-      // Cancel the losing strategy
       this.#cancelRemainingControllers([pollingController, observerController]);
       console.log(`[Sidecar Harvest - ${platformKey}] ✅ Concurrent harvest completed, winner: ${result.meta?.strategy}`);
       return result;
     } catch (error) {
-      // If race fails, cancel everything and return error
       this.#cancelRemainingControllers([pollingController, observerController]);
       throw error;
     }
   }
 
   /**
-   * Execute a single strategy with error handling and normalization
+   * A wrapper to execute a single strategy, handling cancellation and normalization.
    */
   async #executeStrategy(strategyName, executor, controller = null) {
     const { platformKey } = this.config;
     try {
       const rawResult = await executor();
-      // Check if operation was aborted
       if (controller?.signal.aborted) {
         return this.#createErrorResult(`${strategyName} strategy was cancelled`);
       }
@@ -275,169 +230,108 @@ class Provider {
   }
 
   /**
-   * Enhanced polling method with abort signal support
+   * The polling strategy: repeatedly checks the DOM for completion markers.
+   * Driven by 'maxAttempts', 'baseDelay', and 'backoffMultiplier' from the config.
    */
   async #harvestWithPolling(signal = null) {
     const { platformKey, harvestStrategy, selectors } = this.config;
     console.log(`[Sidecar Harvest - ${platformKey}] Starting polling harvest.`);
     let attempt = 0;
     const maxAttempts = harvestStrategy.maxAttempts || 10;
+
     while (attempt < maxAttempts) {
-      // Check for abort signal
-      if (signal?.aborted) {
-        throw new Error('Polling aborted');
-      }
+      if (signal?.aborted) throw new Error('Polling aborted');
+
+      // Uses 'completionChecks' from config if available, otherwise defaults to checking for absence of streaming indicator.
+      const checks = harvestStrategy.completionChecks || [{ type: 'absence', target: 'streamingIndicator' }];
       let allChecksPassed = true;
-      for (const check of harvestStrategy.completionChecks || []) {
+      for (const check of checks) {
         const list = selectors[check.target];
+        if (!list) continue; // Skip if selector for check is not defined
         if (check.type === 'absence' && this.#querySelector(list)) { 
-          allChecksPassed = false; 
-          break; 
+          allChecksPassed = false; break; 
         }
         if (check.type === 'presence' && !this.#querySelector(list)) { 
-          allChecksPassed = false; 
-          break; 
+          allChecksPassed = false; break; 
         }
       }
+
       if (allChecksPassed) {
         console.log(`[Sidecar Harvest - ${platformKey}] ✅ Polling checks passed on attempt ${attempt + 1}`);
-        // Stabilization delay
-        await this.#abortableDelay(2000, signal);
+        await this.#abortableDelay(500, signal); // Stabilization delay
         const result = this.#performScrape();
         if (result) return result;
         throw new Error("Polling detected completion but scraping returned empty result");
       }
+      
       const delay = (harvestStrategy.baseDelay || 500) * Math.pow(harvestStrategy.backoffMultiplier || 1.2, attempt);
       await this.#abortableDelay(delay, signal);
       attempt++;
     }
-    throw new Error(`Polling failed after ${maxAttempts} attempts`);
+    throw new Error(`Polling failed after ${maxAttempts} attempts.`);
   }
 
   /**
-   * Enhanced observer method with abort signal support
+   * The observer strategy: uses a MutationObserver to watch for a completion marker.
+   * Driven by 'observeTarget', 'completionMarker', and 'timeout' from the config.
    */
   async #harvestWithObserver(signal = null) {
     const { platformKey, harvestStrategy, selectors } = this.config;
     console.log(`[Sidecar Harvest - ${platformKey}] Starting intelligent observer harvest.`);
     const observeTargetSelector = selectors[harvestStrategy.observeTarget];
     const completionMarkerSelector = selectors.completionMarker;
+
     return new Promise((resolve, reject) => {
-      // Check for abort signal
-      if (signal?.aborted) {
-        return reject(new Error('Observer aborted'));
-      }
+      if (signal?.aborted) return reject(new Error('Observer aborted'));
+      if (!completionMarkerSelector) return reject(new Error("No 'completionMarker' selector in config for observer strategy."));
+
       let observer;
       let failsafeTimeout;
-      // Cleanup logic
+
       const cleanup = () => {
         if (observer) observer.disconnect();
         if (failsafeTimeout) clearTimeout(failsafeTimeout);
         if (signalListener) signal?.removeEventListener('abort', signalListener);
       };
-      // Abort signal listener
-      const signalListener = signal ? () => {
-        cleanup();
-        reject(new Error('Observer aborted'));
-      } : null;
-      if (signalListener) {
-        signal.addEventListener('abort', signalListener);
-      }
-      // Helper to check for completion marker
-      const checkForCompletion = () => {
-        return this.#querySelector(completionMarkerSelector);
-      };
-      // STEP 1: Immediate check
-      if (checkForCompletion()) {
-        console.log(`[Sidecar Harvest - ${platformKey}] ✅ Completion marker found on initial check.`);
-        cleanup();
-        return resolve(this.#performScrape());
-      }
-      // STEP 2: Set up observer
+
+      const signalListener = signal ? () => { cleanup(); reject(new Error('Observer aborted')); } : null;
+      if (signalListener) signal.addEventListener('abort', signalListener);
+      
       const targetNode = this.#querySelector(observeTargetSelector);
-      if (!targetNode) {
-        cleanup();
-        return reject(new Error(`Observer failed: could not find node for target '${harvestStrategy.observeTarget}'`));
-      }
-      try {
-        observer = new MutationObserver(() => {
-          if (signal?.aborted) {
-            cleanup();
-            return reject(new Error('Observer aborted'));
-          }
-          if (checkForCompletion()) {
-            console.log(`[Sidecar Harvest - ${platformKey}] ✅ Completion marker detected by observer.`);
-            cleanup();
-            // Stabilization delay before scraping
-            setTimeout(() => {
-              if (!signal?.aborted) {
-                resolve(this.#performScrape());
-              }
-            }, 2000); // Changed to 2 seconds
-          }
-        });
-        observer.observe(targetNode, { 
-          childList: true, 
-          subtree: true,
-          attributes: true,
-          attributeFilter: ['data-is-streaming', 'class']
-        });
-      } catch (error) {
-        cleanup();
-        return reject(new Error(`Failed to create observer: ${error.message}`));
-      }
-      // STEP 3: Failsafe timeout
-      failsafeTimeout = setTimeout(() => {
-        console.warn(`[Sidecar Harvest - ${platformKey}] ⚠️ Observer timed out after ${harvestStrategy.timeout}ms`);
-        cleanup();
-        // Final attempt at scraping
-        const result = this.#performScrape();
-        if (result) {
-          resolve(result);
-        } else {
-          reject(new Error(`Observer timed out and no content found`));
+      if (!targetNode) return reject(new Error(`Observer failed: could not find node for target '${harvestStrategy.observeTarget}'`));
+
+      observer = new MutationObserver(() => {
+        if (signal?.aborted) { cleanup(); return; }
+        if (this.#querySelector(completionMarkerSelector)) {
+          console.log(`[Sidecar Harvest - ${platformKey}] ✅ Completion marker detected by observer.`);
+          cleanup();
+          setTimeout(() => !signal?.aborted && resolve(this.#performScrape()), 200); // Stabilization delay
         }
+      });
+
+      observer.observe(targetNode, { childList: true, subtree: true });
+
+      failsafeTimeout = setTimeout(() => {
+        cleanup();
+        reject(new Error(`Observer timed out after ${harvestStrategy.timeout || 45000}ms`));
       }, harvestStrategy.timeout || 45000);
     });
   }
 
   /**
-   * Centralized scraping logic with enhanced element detection
+   * The final step: scraping the text content from the response element.
+   * Uses the 'responseContainer' selectors from the config.
    */
   #performScrape() {
     const { selectors } = this.config;
     const responseSelector = selectors.responseContainer;
-    if (!responseSelector || !Array.isArray(responseSelector)) {
-      throw new Error('Invalid responseContainer selector configuration');
-    }
+    if (!responseSelector || !Array.isArray(responseSelector)) return null;
+
     const responseElements = document.querySelectorAll(responseSelector.join(','));
-    if (responseElements.length === 0) {
-      return null;
-    }
-    // Get the last response element
+    if (responseElements.length === 0) return null;
+
     const lastElement = responseElements[responseElements.length - 1];
-    // Multiple extraction attempts
-    const extractionStrategies = [
-      () => lastElement.textContent?.trim(),
-      () => lastElement.innerText?.trim(),
-      () => lastElement.querySelector('.markdown, .prose, [class*="message"]')?.textContent?.trim(),
-      () => Array.from(lastElement.childNodes)
-        .filter(node => node.nodeType === Node.TEXT_NODE)
-        .map(node => node.textContent?.trim())
-        .filter(Boolean)
-        .join(' ')
-    ];
-    for (const strategy of extractionStrategies) {
-      try {
-        const result = strategy();
-        if (result && result.length > 0) {
-          return result;
-        }
-      } catch (error) {
-        console.warn('[Sidecar] Text extraction strategy failed:', error);
-      }
-    }
-    return null;
+    return lastElement?.textContent?.trim() || null;
   }
 
   /**

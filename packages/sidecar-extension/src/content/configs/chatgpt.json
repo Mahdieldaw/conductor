@@ -32,9 +32,23 @@
     ]
   },
   "broadcastStrategy": [
-    { "action": "fill", "target": "input", "value": "{{prompt}}" },
-    { "action": "wait", "ms": 200 },
-    { "action": "click", "target": "sendButton" }
+    {
+      "action": "fill",
+      "target": "input",
+      "value": "{{prompt}}",
+      "timeout": 7000,
+      "retry": true
+    },
+    {
+      "action": "wait",
+      "ms": 200
+    },
+    {
+      "action": "click",
+      "target": "sendButton",
+      "timeout": 5000,
+      "retry": true
+    }
   ],
   "harvestStrategy": {
     "method": "concurrent",
