@@ -170,6 +170,38 @@ export class Provider {
   }
 
   /**
+   * Clicks the "New Chat" button based on the configuration.
+   * This is called by the session manager to reset the context.
+   */
+  async startNewChat() {
+    const { platformKey, selectors } = this.config;
+    const newChatSelectors = selectors.newChat;
+
+    if (!newChatSelectors || newChatSelectors.length === 0) {
+      console.warn(`[Sidecar NewChat - ${platformKey}] No 'newChat' selectors defined in config. Skipping.`);
+      // Return success because there's nothing to do.
+      return { success: true };
+    }
+
+    console.log(`[Sidecar NewChat - ${platformKey}] Attempting to start a new chat.`);
+    try {
+      const newChatButton = await this.#waitForElement(newChatSelectors, 5000);
+      if (newChatButton) {
+        newChatButton.click();
+        console.log(`[Sidecar NewChat - ${platformKey}] ✅ Clicked 'new chat' button.`);
+        // Allow a brief moment for the UI to update
+        await new Promise(resolve => setTimeout(resolve, 300));
+        return { success: true };
+      }
+      throw new Error("'New Chat' button not found with provided selectors.");
+    } catch (error) {
+      const errorMessage = `Failed to start new chat. Reason: ${error.message}`;
+      console.error(`[Sidecar NewChat - ${platformKey}] ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
    * Runs polling and observer strategies in parallel and returns the first
    * successful result, cancelling the other. This is the most resilient approach.
    */

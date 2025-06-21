@@ -42,7 +42,7 @@ export function getStatusDisplay(status: ProviderStatus) {
     case 'ready':
       return { 
         color: 'bg-green-500', 
-        icon: '\u2705', 
+        icon: '✅', 
         tooltip: 'Ready',
         isActionable: false,
         isSelectable: true 
@@ -50,7 +50,7 @@ export function getStatusDisplay(status: ProviderStatus) {
     case 'checking':
       return { 
         color: 'bg-blue-500 animate-pulse', 
-        icon: '\u23f1', 
+        icon: '⏱️', 
         tooltip: 'Checking status...',
         isActionable: false,
         isSelectable: false 
@@ -58,7 +58,7 @@ export function getStatusDisplay(status: ProviderStatus) {
     case 'login_required':
       return { 
         color: 'bg-amber-500', 
-        icon: '\ud83d\udd12', 
+        icon: '🔒', 
         tooltip: 'Login required - click to focus tab',
         isActionable: true,
         isSelectable: false 
@@ -66,7 +66,7 @@ export function getStatusDisplay(status: ProviderStatus) {
     case 'tab_not_open':
       return { 
         color: 'bg-blue-600', 
-        icon: '\ud83d\udd17', 
+        icon: '🔗', 
         tooltip: 'Tab not open - click to open',
         isActionable: true,
         isSelectable: false 
@@ -74,7 +74,7 @@ export function getStatusDisplay(status: ProviderStatus) {
     case 'network_error':
       return { 
         color: 'bg-red-500', 
-        icon: '\ud83c\udf10', 
+        icon: '🌐', 
         tooltip: 'Network error - click to retry',
         isActionable: true,
         isSelectable: false 
@@ -82,7 +82,7 @@ export function getStatusDisplay(status: ProviderStatus) {
     case 'service_error':
       return { 
         color: 'bg-red-600', 
-        icon: '\u26a0\ufe0f', 
+        icon: '⚠️', 
         tooltip: 'Service error - click to retry',
         isActionable: true,
         isSelectable: false 
@@ -90,7 +90,7 @@ export function getStatusDisplay(status: ProviderStatus) {
     case 'timeout_error':
       return { 
         color: 'bg-orange-500', 
-        icon: '\u23f0', 
+        icon: '⏰', 
         tooltip: 'Check timed out - click to retry',
         isActionable: true,
         isSelectable: false 
@@ -99,7 +99,7 @@ export function getStatusDisplay(status: ProviderStatus) {
     default:
       return { 
         color: 'bg-gray-500', 
-        icon: '\u274c', 
+        icon: '❌', 
         tooltip: 'Offline - click to retry',
         isActionable: true,
         isSelectable: false 

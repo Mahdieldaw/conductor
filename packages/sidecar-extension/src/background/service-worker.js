@@ -18,6 +18,7 @@ import {
   RESET_SESSION,
   PING
 } from '@hybrid-thinking/messaging';
+import { tabManager } from './utils/tab-manager.js'; // Import tabManager
 
 // Create router with domain handlers and middleware
 const router = createMessageRouter({
@@ -37,12 +38,18 @@ const router = createMessageRouter({
 // --- Message Listener ---
 
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
-  console.log(`[Service Worker Refactored] Received message: ${message.type}`);
-  
-  // Use the router function directly - it handles sendResponse internally
-  router(message, sender, sendResponse);
+  // Make the listener function async
+  (async () => {
+    console.log(`[Service Worker] Received message: ${message.type}. Waiting for TabManager...`);
+    // This is the critical fix: wait for the initial tab scan to complete.
+    await tabManager.ready;
+    console.log(`[Service Worker] TabManager is ready. Routing message: ${message.type}`);
+    
+    // Use the router function directly - it handles sendResponse internally
+    router(message, sender, sendResponse);
+  })();
   
   return true; // Keep the message channel open for async response
 });
 
-console.log('[Service Worker Refactored] Initialized with new router architecture');
+console.log('[Service Worker] Initialized with new router architecture');

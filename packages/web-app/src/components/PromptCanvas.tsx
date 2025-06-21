@@ -26,7 +26,6 @@ export const PromptCanvas: React.FC = () => {
     providers,
     isInitialized,
     globalCheckInProgress,
-    checkProvider,
     checkAllProviders,
     fixProvider,
     readyProviders,
@@ -41,16 +40,10 @@ export const PromptCanvas: React.FC = () => {
 
   // Initialize readiness checks on component mount
   useEffect(() => {
-    if (!isInitialized) {
-      checkAllProviders();
-    }
-    const healthCheckInterval = setInterval(() => {
-      if (promptState.status !== 'executing') {
-        checkAllProviders();
-      }
-    }, 30000);
-    return () => clearInterval(healthCheckInterval);
-  }, [checkAllProviders, isInitialized, promptState.status]);
+    // This effect should run once on mount to kick off the initial check.
+    // The `useReadinessFlow` hook itself prevents re-running the initialization logic.
+    checkAllProviders().catch(console.error);
+  }, [checkAllProviders]); // `checkAllProviders` is stable and will only trigger this once.
 
   // Auto-select ready providers, but respect manual deselections
   useEffect(() => {
@@ -76,7 +69,6 @@ export const PromptCanvas: React.FC = () => {
   }, [readyProviders, isInitialized, promptState.manuallyDeselected, updatePromptState]);
 
   const handleSelectionChange = (newSelection: string[]) => {
-    const readyIds = new Set(readyProviders().map(p => p.id));
     const currentSelection = new Set(promptState.targetProviders);
     const deselectedIds = new Set(promptState.manuallyDeselected);
     // Find which providers were just turned OFF
@@ -129,7 +121,6 @@ export const PromptCanvas: React.FC = () => {
       console.log('All targeted providers have been instructed to start a new chat.');
     }
     // *** END OF NEW LOGIC ***
-
     // Initialize UI state for all targets to 'pending'.
     const initialResponses = new Map(
       targets.map(id => [id, { status: 'pending' } as ResponseState])

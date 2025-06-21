@@ -6,19 +6,27 @@
 class TabManager {
   constructor() {
     this.tabs = new Map();
-    this.initialize();
+    // A promise that resolves when the initial tab scan is complete.
+    this.ready = this.initialize();
   }
 
   async initialize() {
     console.log('[TabManager] Initializing...');
     chrome.tabs.onUpdated.addListener(this.handleTabUpdated.bind(this));
     chrome.tabs.onRemoved.addListener(this.handleTabRemoved.bind(this));
-    const allTabs = await chrome.tabs.query({});
-    for (const tab of allTabs) {
-      if (tab.id && tab.url) {
-        this.addOrUpdateTab(tab.id, tab.url);
+    
+    // Perform the initial scan
+    try {
+      const allTabs = await chrome.tabs.query({});
+      for (const tab of allTabs) {
+        if (tab.id && tab.url) {
+          this.addOrUpdateTab(tab.id, tab.url);
+        }
       }
+    } catch (e) {
+      console.error('[TabManager] Failed to query tabs during initialization:', e);
     }
+    
     console.log('[TabManager] Initialization complete. Current tabs:', this.tabs);
   }
 
@@ -63,12 +71,16 @@ class TabManager {
   }
 
   findTabByPlatform(platformKey) {
+    // Return the most recently active tab if multiple are open.
+    let latestTab = null;
     for (const info of this.tabs.values()) {
       if (info.platformKey === platformKey) {
-        return info;
+        if (!latestTab || info.lastActivity > latestTab.lastActivity) {
+            latestTab = info;
+        }
       }
     }
-    return null;
+    return latestTab;
   }
 
   getTabById(tabId) {

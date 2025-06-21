@@ -10,13 +10,39 @@ function getProviderConfig(providerKey) {
   if (!configModule) {
     throw new Error(`Config file not found for provider: ${providerKey}`);
   }
-  // Handle default export from JSON modules
   return configModule.default || configModule;
 }
 
 /**
- * Checks the readiness of a specific LLM platform tab.
- * This now also passes the config to the content script for initialization.
+ * Dynamically injects the content script as a module.
+ * This is the modern, correct way to handle scripts that use import/export.
+ * @param {number} tabId The ID of the tab to inject the script into.
+ */
+async function injectContentModule(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      // The function body runs in the content script context.
+      // We use dynamic import() which correctly handles modules.
+      // This guard prevents the script from running multiple times if injected again.
+      if (window.sidecarInjected) {
+        console.log('[Sidecar] Module already injected. Skipping.');
+        return;
+      }
+      window.sidecarInjected = true;
+      try {
+        import(chrome.runtime.getURL('content/content.js'));
+        console.log('[Sidecar] Module injection initiated.');
+      } catch (e) {
+        console.error('[Sidecar] Module import failed:', e);
+      }
+    },
+  });
+}
+
+/**
+ * Checks the readiness of a specific LLM platform tab by first ensuring
+ * the content script module is loaded, then sending a message.
  */
 export async function check({ providerKey }) {
   const config = getProviderConfig(providerKey);
@@ -27,26 +53,31 @@ export async function check({ providerKey }) {
   }
 
   try {
-    // **THE KEY CHANGE:** We now pass the config in the payload.
-    // The content script will use this to initialize its Provider instance.
+    console.log(`[Handler:CheckReadiness] Injecting content module into tab ${tab.id}`);
+    await injectContentModule(tab.id);
+
+    // Give the module a moment to load and attach its listener.
+    await new Promise(resolve => setTimeout(resolve, 100)); 
+
+    console.log(`[Handler:CheckReadiness] Sending readiness check to tab ${tab.id}`);
     const response = await chrome.tabs.sendMessage(tab.id, {
       type: CHECK_READINESS,
       payload: { config }
     });
     
-    // The response object from the content script now contains the status.
-    if (!response.success) {
-      throw new Error(response.error);
+    if (!response || response.success === false) {
+      throw new Error(response?.error || 'Content script did not respond correctly.');
     }
     
     return { status: response.status, message: response.message, data: { tabId: tab.id } };
 
   } catch (error) {
-    console.error(`[Handler:CheckReadiness] Error checking readiness for ${providerKey}:`, error);
-    // Handle case where content script might not be injected yet
+    console.error(`[Handler:CheckReadiness] Error checking readiness for ${providerKey} in tab ${tab.id}:`, error);
+    
     if (error.message.includes("Could not establish connection")) {
-      return { status: 'TAB_NOT_READY', message: 'Tab is still loading. Please wait and try again.', data: { url: config.url } };
+      return { status: 'TAB_NOT_READY', message: 'Tab is still loading or not responding. Please try rechecking.', data: { url: config.url } };
     }
+    
     throw new Error(`Failed to check readiness for ${providerKey}: ${error.message}`);
   }
 }
