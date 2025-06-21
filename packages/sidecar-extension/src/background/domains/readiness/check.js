@@ -13,9 +13,13 @@ function getProviderConfig(providerKey) {
 }
 
 async function injectContentModule(tabId) {
+  // This check is critical. If tabId is undefined, we can't proceed.
+  if (typeof tabId !== 'number') {
+    throw new TypeError("Failed to inject script: tabId is not a number.");
+  }
   try {
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target: { tabId: tabId }, // Use the passed tabId directly
       func: () => {
         if (window.sidecarInjected) { return; }
         window.sidecarInjected = true;
@@ -24,26 +28,27 @@ async function injectContentModule(tabId) {
     });
   } catch (e) {
     console.error(`Failed to inject content script into tab ${tabId}:`, e);
-    // This error is critical, re-throw it so the caller can handle it.
-    throw e; 
+    throw e;
   }
 }
 
 export async function check({ providerKey }) {
   const config = getProviderConfig(providerKey);
-  
-  // THE FIX: We now `await` the tab finding logic, which runs an up-to-date query.
   const tab = await tabManager.findTabByPlatform(providerKey);
   
-  if (!tab || !tab.tabId) {
+  if (!tab || typeof tab.tabId !== 'number') {
     return { status: 'TAB_NOT_OPEN', message: `${config.name || providerKey} tab is not open.`, data: { url: config.url } };
   }
 
   try {
-    await injectContentModule(tab.id);
+    // THE FIX: We now explicitly pass `tab.tabId` to the injection function.
+    await injectContentModule(tab.tabId);
+    
+    // Give the module a moment to load and attach its listener.
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    const response = await chrome.tabs.sendMessage(tab.id, {
+    // And we use `tab.tabId` for sending the message.
+    const response = await chrome.tabs.sendMessage(tab.tabId, {
       type: CHECK_READINESS,
       payload: { config }
     });
@@ -52,10 +57,10 @@ export async function check({ providerKey }) {
       throw new Error(response?.error || 'Content script did not respond correctly.');
     }
     
-    return { status: response.status, message: response.message, data: { tabId: tab.id } };
+    return { status: response.status, message: response.message, data: { tabId: tab.tabId } };
 
   } catch (error) {
-    console.error(`[Handler:CheckReadiness] Error checking readiness for ${providerKey} in tab ${tab.id}:`, error);
+    console.error(`[Handler:CheckReadiness] Error checking readiness for ${providerKey} in tab ${tab.tabId}:`, error);
     if (error.message.includes("Could not establish connection")) {
       return { status: 'TAB_NOT_READY', message: 'Tab is still loading or not responding. Please try rechecking.', data: { url: config.url } };
     }
