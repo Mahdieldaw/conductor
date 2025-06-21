@@ -1,51 +1,52 @@
 import { CHECK_READINESS } from '@hybrid-thinking/messaging';
 import { findTabByPlatform } from '../../utils/tab-finder.js';
 
-/**
- * Handles checking the readiness of a specific platform's tab.
- * Loads the provider's JSON config from the extension's package.
- * @param {string} providerKey - The key for the provider (e.g., 'chatgpt').
- * @returns {Promise<object>} The provider configuration.
- */
-async function getProviderConfig(providerKey) {
-  const url = chrome.runtime.getURL(`content/configs/${providerKey}.json`);
-  try {
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Config not found for ${providerKey}: ${resp.statusText}`);
-    return await resp.json();
-  } catch (e) {
-    console.error(`Failed to load config for ${providerKey}:`, e);
-    throw new Error(`Failed to load configuration for ${providerKey}.`);
+// It's safe to use import.meta.glob here in the service worker.
+const configs = import.meta.glob('/src/content/configs/*.json', { eager: true });
+
+function getProviderConfig(providerKey) {
+  const path = `/src/content/configs/${providerKey}.json`;
+  const configModule = configs[path];
+  if (!configModule) {
+    throw new Error(`Config file not found for provider: ${providerKey}`);
   }
+  // Handle default export from JSON modules
+  return configModule.default || configModule;
 }
 
 /**
  * Checks the readiness of a specific LLM platform tab.
- * @param {object} payload - The message payload.
- * @param {string} payload.providerKey - The provider key (e.g., 'chatgpt', 'claude').
- * @returns {Promise<object>} An object indicating readiness status and data.
+ * This now also passes the config to the content script for initialization.
  */
 export async function check({ providerKey }) {
-  const config = await getProviderConfig(providerKey);
+  const config = getProviderConfig(providerKey);
   const tab = findTabByPlatform(providerKey);
+  
   if (!tab) {
     return { status: 'TAB_NOT_OPEN', message: `${config.name || providerKey} tab is not open.`, data: { url: config.url } };
   }
 
-  // Readiness Verification via content script
   try {
-    const scriptResponse = await chrome.tabs.sendMessage(tab.tabId, {
+    // **THE KEY CHANGE:** We now pass the config in the payload.
+    // The content script will use this to initialize its Provider instance.
+    const response = await chrome.tabs.sendMessage(tab.id, {
       type: CHECK_READINESS,
       payload: { config }
     });
-    const { status, message } = scriptResponse?.data || {};
-
-    if (status === 'READY') {
-      return { status: 'READY', message: 'Connection successful!', data: { tabId: tab.tabId } };
+    
+    // The response object from the content script now contains the status.
+    if (!response.success) {
+      throw new Error(response.error);
     }
-    return { status, message, data: { url: config.url } };
+    
+    return { status: response.status, message: response.message, data: { tabId: tab.id } };
+
   } catch (error) {
     console.error(`[Handler:CheckReadiness] Error checking readiness for ${providerKey}:`, error);
+    // Handle case where content script might not be injected yet
+    if (error.message.includes("Could not establish connection")) {
+      return { status: 'TAB_NOT_READY', message: 'Tab is still loading. Please wait and try again.', data: { url: config.url } };
+    }
     throw new Error(`Failed to check readiness for ${providerKey}: ${error.message}`);
   }
 }
