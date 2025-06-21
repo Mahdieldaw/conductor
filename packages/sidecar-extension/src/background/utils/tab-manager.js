@@ -2,17 +2,19 @@
 
 // This loads all provider configs at once, creating a map of hostnames to platform keys.
 const configs = import.meta.glob('/src/content/configs/*.json', { eager: true });
+const platformToHostnamesMap = new Map();
 const hostnameToPlatformMap = new Map();
 
 for (const path in configs) {
   const config = configs[path].default || configs[path];
   if (config.platformKey && Array.isArray(config.hostnames)) {
+    platformToHostnamesMap.set(config.platformKey, config.hostnames);
     for (const hostname of config.hostnames) {
       hostnameToPlatformMap.set(hostname, config.platformKey);
     }
   }
 }
-console.log('[TabManager] Initialized with hostname mapping:', hostnameToPlatformMap);
+console.log('[TabManager] Initialized with platform->hostnames mapping:', platformToHostnamesMap);
 
 /**
  * Manages all interactions with the chrome.tabs API.
@@ -29,51 +31,38 @@ class TabManager {
     chrome.tabs.onRemoved.addListener(this.handleTabRemoved.bind(this));
   }
   
-  // This is now the primary method to get a tab, handling the async query internally.
+  // THE DEFINITIVE FIX IS IN THIS FUNCTION
   async findTabByPlatform(platformKey) {
-    // First, try to find a recently active tab from our cache.
-    let candidates = [];
-    for (const tab of this.tabs.values()) {
-        if (tab.platformKey === platformKey) {
-            candidates.push(tab);
-        }
+    const hostnames = platformToHostnamesMap.get(platformKey);
+    if (!hostnames || hostnames.length === 0) {
+      console.warn(`[TabManager] No hostnames configured for platform: ${platformKey}`);
+      return undefined;
     }
-    
-    // Sort by last activity to get the most recent one.
-    if (candidates.length > 0) {
-        candidates.sort((a, b) => b.lastActivity - a.lastActivity);
-        const mostRecentCachedTab = candidates[0];
-        
-        // Quick verification check to see if the tab still exists.
-        try {
-            await chrome.tabs.get(mostRecentCachedTab.tabId);
-            return mostRecentCachedTab; // Return from cache if it's still valid
-        } catch (e) {
-            // The tab was closed, remove it from our cache.
-            this.tabs.delete(mostRecentCachedTab.tabId);
-        }
-    }
-    
-    // If no valid tab was found in cache, query all tabs.
-    console.log(`[TabManager] No valid tab in cache for '${platformKey}'. Performing a full query.`);
-    const allTabs = await chrome.tabs.query({ url: `*://${platformKey === 'chatgpt' ? 'chat.openai.com' : 'claude.ai'}/*` });
-    
-    if (allTabs.length === 0) {
-        console.warn(`[TabManager] No tab found for platform: ${platformKey}`);
-        return undefined;
-    }
-    
-    // Update our cache with the newly found tabs
-    allTabs.forEach(tab => this.addOrUpdateTab(tab.id, tab.url));
 
-    // Return the first one found from the live query.
-    return this.tabs.get(allTabs[0].id);
+    // Build the URL patterns for the query
+    const urlPatterns = hostnames.map(h => `*://${h}/*`);
+    
+    // Query for all tabs that match the hostnames for the given platform
+    const matchingTabs = await chrome.tabs.query({ url: urlPatterns });
+
+    if (matchingTabs.length === 0) {
+      console.warn(`[TabManager] No tab found for platform: ${platformKey}`);
+      return undefined;
+    }
+
+    // Update our internal cache with all found tabs to keep it fresh
+    matchingTabs.forEach(tab => this.addOrUpdateTab(tab.id, tab.url));
+
+    // Sort by last active tab (if available in tab object) or return the last one in the array
+    matchingTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+    
+    const bestTab = matchingTabs[0];
+    console.log(`[TabManager] Found tab ${bestTab.id} for platform '${platformKey}'`);
+    return this.tabs.get(bestTab.id);
   }
 
   getPlatformKey(hostname) {
-    if (hostname.includes('chat.openai.com')) return 'chatgpt';
-    if (hostname.includes('claude.ai')) return 'claude';
-    return null;
+    return hostnameToPlatformMap.get(hostname);
   }
 
   addOrUpdateTab(tabId, url) {
