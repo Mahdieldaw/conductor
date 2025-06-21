@@ -1,5 +1,19 @@
 // packages/sidecar-extension/src/background/tab-manager.js
 
+// This loads all provider configs at once, creating a map of hostnames to platform keys.
+const configs = import.meta.glob('/src/content/configs/*.json', { eager: true });
+const hostnameToPlatformMap = new Map();
+
+for (const path in configs) {
+  const config = configs[path].default || configs[path];
+  if (config.platformKey && Array.isArray(config.hostnames)) {
+    for (const hostname of config.hostnames) {
+      hostnameToPlatformMap.set(hostname, config.platformKey);
+    }
+  }
+}
+console.log('[TabManager] Initialized with hostname mapping:', hostnameToPlatformMap);
+
 /**
  * Manages all interactions with the chrome.tabs API.
  */
@@ -11,11 +25,10 @@ class TabManager {
   }
 
   async initialize() {
-    console.log('[TabManager] Initializing...');
+    console.log('[TabManager] Starting initial tab scan...');
     chrome.tabs.onUpdated.addListener(this.handleTabUpdated.bind(this));
     chrome.tabs.onRemoved.addListener(this.handleTabRemoved.bind(this));
     
-    // Perform the initial scan
     try {
       const allTabs = await chrome.tabs.query({});
       for (const tab of allTabs) {
@@ -27,7 +40,7 @@ class TabManager {
       console.error('[TabManager] Failed to query tabs during initialization:', e);
     }
     
-    console.log('[TabManager] Initialization complete. Current tabs:', this.tabs);
+    console.log('[TabManager] Initialization complete.');
   }
 
   handleTabUpdated(tabId, changeInfo, tab) {
@@ -43,18 +56,9 @@ class TabManager {
     }
   }
 
-  isSupportedHostname(hostname) {
-    return hostname.includes('chatgpt.com') ||
-           hostname.includes('chat.openai.com') ||
-           hostname.includes('claude.ai') ||
-           hostname.includes('console.anthropic.com');
-  }
-
+  // Uses the robust mapping created from your config files.
   getPlatformKey(hostname) {
-    if (!hostname) return null;
-    if (hostname.includes('chatgpt') || hostname.includes('openai')) return 'chatgpt';
-    if (hostname.includes('claude') || hostname.includes('anthropic')) return 'claude';
-    return null;
+    return hostnameToPlatformMap.get(hostname);
   }
 
   addOrUpdateTab(tabId, url) {
@@ -63,15 +67,14 @@ class TabManager {
       const platformKey = this.getPlatformKey(hostname);
       if (platformKey) {
         this.tabs.set(tabId, { url, hostname, platformKey, tabId, lastActivity: Date.now() });
-        console.log(`[TabManager] Added/Updated tab ${tabId} for platform ${platformKey}`);
+        console.log(`[TabManager] Added/Updated tab ${tabId} for platform '${platformKey}'`);
       }
     } catch (e) {
-      console.warn(`[TabManager] Could not process tab URL: ${url}`, e);
+      // This can happen for invalid URLs like 'about:blank', it's safe to ignore.
     }
   }
 
   findTabByPlatform(platformKey) {
-    // Return the most recently active tab if multiple are open.
     let latestTab = null;
     for (const info of this.tabs.values()) {
       if (info.platformKey === platformKey) {
@@ -79,6 +82,9 @@ class TabManager {
             latestTab = info;
         }
       }
+    }
+    if (!latestTab) {
+      console.warn(`[TabManager] findTabByPlatform: No active tab found for key '${platformKey}'`);
     }
     return latestTab;
   }

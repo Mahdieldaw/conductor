@@ -13,18 +13,18 @@ export const PROVIDER_CONFIGS: ProviderConfig[] = [
     logoColor: '#D97706',
     url: 'https://claude.ai'
   },
-  { 
-    id: 'perplexity', 
-    name: 'Perplexity', 
-    logoColor: '#6B7280',
-    url: 'https://perplexity.ai'
-  },
-  { 
-    id: 'gemini', 
-    name: 'Gemini', 
-    logoColor: '#4F46E5',
-    url: 'https://gemini.google.com'
-  },
+  // { 
+  //   id: 'perplexity', 
+  //   name: 'Perplexity', 
+  //   logoColor: '#6B7280',
+  //   url: 'https://perplexity.ai'
+  // },
+  // { 
+  //   id: 'gemini', 
+  //   name: 'Gemini', 
+  //   logoColor: '#4F46E5',
+  //   url: 'https://gemini.google.com'
+  // },
 ];
 
 export const getProviderConfig = (id: string): ProviderConfig | undefined => {
