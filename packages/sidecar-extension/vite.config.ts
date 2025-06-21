@@ -5,25 +5,21 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig({
   build: {
-    // We will control the build entirely through rollupOptions
     outDir: 'dist',
     sourcemap: 'inline',
-    minify: false,
-
+    minify: false, // Set to true for production builds
     rollupOptions: {
-      // Define the multiple entry points for the extension
       input: {
-        'background/service-worker': resolve(__dirname, 'src/background/service-worker.js'),
+        'background/service-worker': resolve(__dirname, 'src/background/service-worker.js'), // Point to the final service worker
         'content/content': resolve(__dirname, 'src/content/content.js'),
       },
       output: {
-        // The output format MUST be 'es' (ES Module) for Chrome Extensions
-        format: 'esm',
-        // Ensure consistent naming for the output files
+        format: 'es',
         entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name].js',
         assetFileNames: 'assets/[name][extname]',
       },
+      external: [],
     },
   },
   plugins: [

@@ -4,7 +4,8 @@ import {
   EXECUTE_PROMPT, 
   HARVEST_RESPONSE,
   BROADCAST_PROMPT,
-  RESET_SESSION
+  RESET_SESSION,
+  CHECK_READINESS
 } from '@hybrid-thinking/messaging';
 
 // This service is a singleton that abstracts all communication with the Sidecar Extension.
@@ -126,6 +127,18 @@ class SidecarService {
       return this.#sendMessage({
           type: HARVEST_RESPONSE,
           payload: { platform }
+      });
+  }
+
+  /**
+   * Checks the readiness of a specific platform's tab.
+   * @param {string} providerKey - The key for the provider (e.g., 'chatgpt').
+   * @returns {Promise<object>} The readiness check result with status, message, and data.
+   */
+  async checkReadiness(providerKey) {
+      return this.#sendMessage({
+          type: CHECK_READINESS,
+          payload: { providerKey }
       });
   }
 }

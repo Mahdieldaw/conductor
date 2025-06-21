@@ -1,7 +1,5 @@
-import React, { useEffect, useState } from 'react';
-
-// Declare chrome as a global variable for TypeScript
-declare const chrome: any;
+import React, { useState, useEffect } from 'react';
+import { sidecarService } from '../services/SidecarService';
 
 interface ReadinessGateProps {
   providerKey: string;
@@ -14,17 +12,30 @@ export const ReadinessGate: React.FC<ReadinessGateProps> = ({ providerKey, onRea
   const [providerUrl, setProviderUrl] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    const port = chrome.runtime.connect({ name: 'readiness-pipeline' });
-    port.onMessage.addListener(msg => {
-      setStatus(msg.status);
-      setMessage(msg.message);
-      if (msg.data?.url) setProviderUrl(msg.data.url);
-      if (msg.status === 'READY' && msg.data) {
-        onReady(msg.data);
+    const checkReadiness = async () => {
+      try {
+        setStatus('PENDING');
+        setMessage('Checking readiness…');
+        
+        const result = await sidecarService.checkReadiness(providerKey);
+        
+        setStatus(result.status);
+        setMessage(result.message);
+        
+        if (result.data?.url) {
+          setProviderUrl(result.data.url);
+        }
+        
+        if (result.status === 'READY' && result.data) {
+          onReady(result.data);
+        }
+      } catch (error) {
+        setStatus('ERROR');
+        setMessage(`Connection error: ${error.message}`);
       }
-    });
-    port.postMessage({ action: 'CHECK_READINESS', providerKey });
-    return () => port.disconnect();
+    };
+    
+    checkReadiness();
   }, [providerKey, onReady]);
 
   return (

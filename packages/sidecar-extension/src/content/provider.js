@@ -17,18 +17,36 @@ class Provider {
     return config;
   }
   
-  // Handles an ARRAY of selectors.
+  // Handles an ARRAY of selectors, including searching within Shadow DOMs.
   #querySelector(selectorArray) {
     if (!selectorArray || !Array.isArray(selectorArray)) return null;
-    for (const selector of selectorArray) {
-      try {
-        const element = document.querySelector(selector);
-        if (element) return element;
-      } catch (e) {
-        console.warn(`[Sidecar] Invalid selector in array: ${selector}`, e);
+
+    const findElement = (selectors, root) => {
+      for (const selector of selectors) {
+        try {
+          // Check the current root
+          const element = root.querySelector(selector);
+          if (element) return element;
+        } catch (e) {
+          // This can happen with invalid selectors, especially during development
+          console.warn(`[Sidecar] Invalid selector in array: ${selector}`, e);
+          continue; // Try the next selector
+        }
       }
-    }
-    return null;
+
+      // If not found, search inside all shadow roots in the current root
+      const shadowRoots = root.querySelectorAll('*');
+      for (const element of shadowRoots) {
+        if (element.shadowRoot) {
+          const foundInShadow = findElement(selectors, element.shadowRoot);
+          if (foundInShadow) return foundInShadow;
+        }
+      }
+
+      return null;
+    };
+
+    return findElement(selectorArray, document);
   }
 
   // Waits for an element to appear.

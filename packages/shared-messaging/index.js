@@ -9,3 +9,7 @@ export const GET_AVAILABLE_TABS = 'GET_AVAILABLE_TABS';
 // New message types for session management
 export const RESET_SESSION = 'RESET_SESSION'; // UI to Service Worker
 export const START_NEW_CHAT = 'START_NEW_CHAT'; // Service Worker to Content Script
+
+// New message types for readiness pipeline
+export const CHECK_READINESS = 'CHECK_READINESS'; // UI to Service Worker
+export const ATTEMPT_RECOVERY = 'ATTEMPT_RECOVERY'; // Service Worker to Content Script

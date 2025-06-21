@@ -1,150 +1,211 @@
-Development Brief: Hybrid Thinking OS - UI for Parallel Prompt Execution
-1. Mission: Evolve the Control Panel
-The primary objective is to transform the Web App Control Panel from a simple prompt broadcaster into a robust, real-time execution and results management interface. The backend Sidecar extension is stable and proven; this initiative completes the prompt-to-result lifecycle by building a comprehensive frontend capable of orchestrating and displaying parallel, multi-provider AI responses. This is a critical prerequisite for all future workflow development.
+-----
 
-2. Core Architecture
-2.1. System Context
-Backend Engine: The Sidecar browser extension is fully operational. It reliably handles provider discovery, prompt broadcasting, and response harvesting.
+### **Phase 1: Audit & Bootstrap – *Laying the Groundwork***
 
-Frontend Gap: The current Control Panel UI can initiate prompts but lacks the state management and components to handle the asynchronous, multi-provider responses returned by the Sidecar.
+**Objective:** Create the new directory structure and move existing files without changing any logic, establishing a safe baseline.
 
-2.2. State Management: The Single Source of Truth
-The UI will be driven by a central state object. The proposed Map structure is architecturally sound and must be implemented as the single source of truth for all response data.
+1.  **Inventory Existing Modules:**
 
-File: PromptCanvas.tsx
-State Object: promptState.responses
-Data Structure:
+      * **Current Files:** The core logic is currently in `packages/sidecar-extension/src/background/`.
+          * [cite\_start]`service-worker.js`: The monolithic entry point with a large `switch` statement handling all messages. [cite: 1931-1942]
+          * [cite\_start]`tab-manager.js`: Handles tab tracking and discovery. [cite: 1958-1972]
+          * [cite\_start]`tab-session-manager.js`: Manages per-tab session state. [cite: 1973-1994]
+      * **Domain Grouping (Conceptual):**
+          * **System Domain:** `PING`, `GET_AVAILABLE_TABS`.
+          * **Session Domain:** `RESET_SESSION`.
+          * **Prompt Domain:** `EXECUTE_PROMPT`, `BROADCAST_PROMPT`, `HARVEST_RESPONSE`.
+          * [cite\_start]**Readiness Domain:** The separate `chrome.runtime.onConnect` logic for the readiness pipeline. [cite: 3051-3053]
 
-// Map<providerId: string, Response>
-Map<string, {
-  status: 'pending' | 'completed' | 'error';
-  data?: string;   // The full response text on success
-  error?: string;  // The error message on failure
-}>
+2.  **Scaffold New Directory Structure:**
 
+      * In `packages/sidecar-extension/src/background/`, create the new folders:
+        ```
+        /core
+        /domains
+        /domains/prompt
+        /domains/session
+        /domains/readiness
+        /utils
+        ```
 
-3. Technical Implementation Plan
-3.1. Execution Logic Refactor: handlePromptExecution
-The core execution logic in PromptCanvas.tsx must be refactored to handle parallel requests robustly and update the UI state efficiently.
+3.  **Migrate Files (No-Op Move):**
 
-Architectural Mandate: Use Promise.allSettled
-We will use Promise.allSettled for executing prompts against multiple providers. This is the optimal approach because it guarantees that the overall operation will not fail even if one or more individual provider requests fail. It returns a comprehensive status for every single promise, which is exactly what our multi-provider UI requires.
+      * Move `tab-manager.js` and `tab-session-manager.js` into the new `/utils` folder for now. They will be further refactored later.
+      * **Crucially, leave the original `service-worker.js` untouched for this phase.**
 
-Optimized Implementation (PromptCanvas.tsx):
+4.  **Verification:**
 
-const handlePromptExecution = async () => {
-  const targets = promptState.targetProviders;
-  if (targets.length === 0) return;
+      * Run the application using `pnpm dev`.
+      * Use the `test-harness.html` to execute `Test Connection`, `Get Available Tabs`, and `Execute Full Flow`.
+      * **Expected Outcome:** Everything should function exactly as before. This confirms the baseline is stable.
 
-  // 1. Initialize UI state for all targets to 'pending'.
-  // This provides immediate user feedback that work has started.
-  const initialResponses = new Map(
-    targets.map(id => [id, { status: 'pending' }])
-  );
-  updatePromptState({ status: 'executing', responses: initialResponses });
+-----
 
-  // 2. Create an array of execution promises.
-  const executionPromises = targets.map(providerId =>
-    sidecarService.executePrompt(providerId, promptState.text)
-  );
+### **Phase 2: Core System Extraction – *Building the New Engine***
 
-  // 3. Await all results using Promise.allSettled for maximum robustness.
-  const results = await Promise.allSettled(executionPromises);
+**Objective:** Introduce the router, middleware, and error handling systems. This phase begins the actual logic migration.
 
-  // 4. Reconcile all results back into the state map.
-  // This is a single, efficient batch update to prevent multiple re-renders.
-  const finalResponses = new Map(initialResponses); // Start from a clean slate
-  results.forEach((result, index) => {
-    const providerId = targets[index];
-    if (result.status === 'fulfilled') {
-      finalResponses.set(providerId, { status: 'completed', data: result.value });
-    } else {
-      // Capture the error message for display in the UI.
-      finalResponses.set(providerId, { status: 'error', error: result.reason.message });
-    }
-  });
+1.  **Implement the Message Router:**
 
-  updatePromptState({ status: 'completed', responses: finalResponses });
-};
+      * Create `packages/sidecar-extension/src/background/core/message-router.js`.
+      * Implement the `createMessageRouter` function as defined in your architectural proposal. This will include the `context` object creation with a `requestId`.
 
+2.  **Implement the Middleware System:**
 
-3.2. Component Spec Sheet
-Two new components must be created to visualize the results.
+      * Create `packages/sidecar-extension/src/background/core/middleware.js`.
+      * Implement `createMiddleware` and add the stubs for `loggingMiddleware`, `metricsMiddleware`, and `validationMiddleware`.
 
-Component 1: ResultsDisplay.tsx
+3.  **Implement Centralized Error Handling:**
 
-Responsibility: Orchestrates the visualization of all responses. Acts as the container for the ResponseCard components.
+      * Create `packages/sidecar-extension/src/background/core/error-handler.js`.
+      * [cite\_start]This directly addresses the **"Harmonize error messages"** goal from your project's Phase 4. [cite: 2817]
+      * Implement the `handleError` function, including `sanitizeErrorMessage`, `isRecoverable`, and `getSuggestion`.
 
-Props:
+4.  **Activate the Router:**
 
-responses: Map<string, Response>
+      * Modify `service-worker.js`. Keep the old `onMessageExternal` listener for now, but create a new `service-worker.refactored.js` (or similar temporary name).
+      * In the new file, import the `createMessageRouter` and `handleError`. Instantiate them.
+      * In your `vite.config.ts`, temporarily change the service worker entry point to this new file to test the new system in isolation.
+        ```js
+        // vite.config.ts
+        input: {
+          'background/service-worker': resolve(__dirname, 'src/background/service-worker.refactored.js'), // Point to the new file
+          //...
+        },
+        ```
 
-providers: Provider[] (To look up provider metadata like name/logo)
+5.  **Verification:**
 
-Behavior:
+      * In the new service worker, register a single handler (`PING`) and the `loggingMiddleware`.
+      * Reload the extension and use the `test-harness.html` to send a `PING` message.
+      * **Expected Outcome:** Check the service worker console. You should see the log output from `loggingMiddleware` including the `requestId`, confirming the new router and middleware pipeline is operational.
 
-Should render null or nothing if the responses map is empty.
+-----
 
-Must render its contents within a responsive two-column grid (grid grid-cols-1 md:grid-cols-2 gap-4).
+### **Phase 3: Domain & Handler Realignment – *Establishing Clear Boundaries***
 
-Iterates over responses.entries() and renders one ResponseCard for each entry, passing the required props.
+**Objective:** Move the business logic from the monolithic `service-worker.js` into focused, cohesive domain modules.
 
-Component 2: ResponseCard.tsx
+1.  **Migrate Atomic Handlers to Domains:**
 
-Responsibility: Displays the result from a single AI provider.
+      * Go through the `switch` statement in the original `service-worker.js`. For each message type, create a corresponding handler file in the new domain structure.
+      * `domains/prompt/broadcast.js`: Contains `handleBroadcastPrompt` logic.
+      * `domains/prompt/harvest.js`: Contains `handleHarvestResponse` logic.
+      * `domains/session/reset.js`: Contains the `RESET_SESSION` logic.
 
-Props:
+2.  **Create Domain Orchestrators:**
 
-provider: Provider (Contains name, logo, theme color, etc.)
+      * `domains/prompt/execute.js`: Create this file to orchestrate the prompt workflow. It will import and call the `broadcast` and `harvest` functions. This replaces the old `handleExecutePrompt` function.
 
-responseState: Response (The object with status, data, or error)
+3.  **Create Domain `index.js` Barrels:**
 
-UI States & Elements:
+      * For each domain folder (`prompt`, `session`), create an `index.js` file that exports all the handlers from that domain. This simplifies imports.
+        ```js
+        // packages/sidecar-extension/src/background/domains/prompt/index.js
+        export { execute } from './execute.js';
+        export { broadcast } from './broadcast.js';
+        export { harvest } from './harvest.js';
+        ```
 
-Container: A visually distinct card with padding and rounded corners.
+4.  **Rewire the Router to Use Domains:**
 
-Header: Displays the provider's Name and Logo/Color.
+      * In your `service-worker.refactored.js`, remove the individual handler imports and use the new domain imports. Map the message types to the domain functions.
+        ```js
+        // In service-worker.refactored.js
+        import * as promptDomain from './domains/prompt/index.js';
+        import * as sessionDomain from './domains/session/index.js';
 
-Status Indicator:
+        const router = createMessageRouter({
+          EXECUTE_PROMPT: promptDomain.execute,
+          BROADCAST_PROMPT: promptDomain.broadcast,
+          HARVEST_RESPONSE: promptDomain.harvest,
+          RESET_SESSION: sessionDomain.reset,
+          // ... other handlers
+        }, { /* ... */ });
+        ```
 
-pending: A spinner/loading animation.
+5.  **Verification:**
 
-completed: A success icon (e.g., a checkmark).
+      * Reload the extension. Use the `test-harness.html` to test the `EXECUTE_PROMPT` and `RESET_SESSION` flows.
+      * **Expected Outcome:** The workflows should execute successfully, but now they are running through the new, fully-decoupled domain structure. You have effectively dismantled the old monolith.
 
-error: An error icon (e.g., a cross or warning sign).
+-----
 
-Content Body:
+### **Phase 4: Utility Consolidation – *Refining Dependencies***
 
-If status is completed, display the data in a pre-formatted block. The text must be user-selectable and easily copyable.
+**Objective:** Abstract shared, reusable logic into pure utility modules to improve decoupling and testability.
 
-If status is error, display the error message clearly.
+1.  **Consolidate `tabManager` Logic:**
 
-3.3. UX Feedback Enhancement: ExecutionController.tsx
-To provide a clear summary of a batch operation, the ExecutionController must be enhanced.
+      * Create `utils/tab-finder.js`. Move the `findTabByPlatform` logic into this new utility.
+      * Refactor the domain handlers in `domains/prompt/` and `domains/session/` to import from `utils/tab-finder.js` instead of directly using the `tabManager` instance.
 
-Trigger Condition: When promptState.status is 'completed'.
+2.  **Create `script-executor.js`:**
 
-Logic: Check if every value in the promptState.responses map has a status of 'completed'.
+      * In `utils/script-executor.js`, create the `executeContentScript` function from your architectural design. This function will wrap `chrome.scripting.executeScript` and include timeout handling.
+      * Refactor all domain handlers that call `chrome.scripting.executeScript` to use this new, more robust utility.
 
-Display: If the condition is met, render a prominent success message: "✅ All responses received successfully."
+3.  **Introduce Unit Testing (Optional but Recommended):**
 
-4. Acceptance Criteria & Deliverables
-4.1. Acceptance Criteria
-Functional: A user can select multiple providers, enter a prompt, and see a distinct response card for each provider.
+      * This is the perfect time to set up a testing framework (like Jest).
+      * Write your first unit tests for the pure functions in `utils/tab-finder.js` and `utils/script-executor.js`. [cite\_start]This aligns with the **"Testing & Infrastructure"** goals. [cite: 2835]
 
-Robustness: A failure from one provider (e.g., API error) does not prevent results from other providers from being displayed.
+4.  **Verification:**
 
-Stateful: Each response card correctly displays its current state: pending (with a spinner), completed (with data), or error (with a message).
+      * Perform a full end-to-end smoke test using the Web App UI. Execute prompts and reset sessions.
+      * **Expected Outcome:** The application remains fully functional. The domain logic is now cleaner and no longer has direct dependencies on `chrome.*` APIs or the original `tab-manager.js`.
 
-Usability: Generated response text is selectable and can be copied to the clipboard.
+-----
 
-UX: The UI provides a clear "all successful" message when appropriate.
+### **Phase 5: Readiness Pipeline Integration – *Unifying Entry Points***
 
-Layout: Response cards are displayed in a responsive side-by-side grid on larger screens.
+**Objective:** Migrate the separate, port-based readiness check into the new domain-driven architecture. [cite\_start]This is a key task from your project's Phase 3. [cite: 2813-2815]
 
-4.2. Summary of Deliverables
-| Feature | File(s) to Modify/Create | Action Required |
-| Execution Logic | PromptCanvas.tsx | Refactor handlePromptExecution to use Promise.allSettled and update state. |
-| Results Container | ResultsDisplay.tsx (New) | Create the grid-based component to render the list of response cards. |
-| Result Card UI | ResponseCard.tsx (New) | Create the card component for displaying individual provider results and status. |
-| Success Feedback | ExecutionController.tsx | Add logic to display a confirmation message upon 100% successful completion. |
+1.  **Populate `domains/readiness/`:**
+
+      * [cite\_start]The existing `executeReadinessPipeline` logic in `service-worker.js` should be broken down and moved. [cite: 3057-3067]
+      * Create `domains/readiness/check.js` to handle the core logic of checking tab status via `window.hybrid.checkReadiness`.
+      * Create `domains/readiness/recover.js` (initially it can be a stub) for future recovery actions like auto-login.
+      * Add new message types to `shared-messaging` (e.g., `CHECK_READINESS`, `ATTEMPT_RECOVERY`).
+
+2.  **Wire into the Main Router:**
+
+      * Register the new `CHECK_READINESS` message type in the main `message-router.js`, pointing it to `readiness.check`.
+      * **Deprecate the Port Listener:** The `chrome.runtime.onConnect` listener for `readiness-pipeline` should now be completely removed from the service worker. All communication now flows through the single `onMessageExternal` listener and the message router.
+
+3.  **Update UI (`ReadinessGate.tsx`):**
+
+      * Refactor the `ReadinessGate.tsx` component in the `web-app`. Instead of using `chrome.runtime.connect`, it should now use the `sidecarService` to send a single `CHECK_READINESS` message. This will require updating `SidecarService.js` to handle this new message type.
+
+4.  **Verification:**
+
+      * Launch the `web-app`. Select a provider.
+      * **Expected Outcome:** The readiness gate in the UI should function as before, but the underlying communication now uses the unified message router, demonstrating a cleaner and more consistent architecture.
+
+-----
+
+### **Phase 6: Finalization & Hardening – *Achieving Production Readiness***
+
+**Objective:** Finalize the refactor, enable full observability, and document the new architecture. [cite\_start]This completes the transition to your project's Phase 4. [cite: 2816]
+
+1.  **Activate Full Observability:**
+
+      * [cite\_start]In the service worker, enable the `metricsMiddleware` and `validationMiddleware` that were created in Phase 2. This directly addresses the **"Add analytics and detailed logging"** goal. [cite: 2821]
+
+2.  **Cleanup and Final Switch:**
+
+      * Delete the original `service-worker.js`.
+      * Rename `service-worker.refactored.js` to `service-worker.js`.
+      * Update `vite.config.ts` to point to the final, clean service worker file.
+
+3.  **Documentation (`CONTRIBUTING.md`):**
+
+      * Create a `CONTRIBUTING.md` file in `packages/sidecar-extension/`.
+      * Document the new architecture: explain the role of `core`, `domains`, and `utils`.
+      * Provide a clear recipe for adding a new message handler or a new domain, as outlined in your roadmap.
+
+4.  **Verification:**
+
+      * Run your linter and any CI checks.
+      * Perform a final, exhaustive test of all application features from the web app UI.
+      * **Expected Outcome:** The system is fully migrated, stable, and observable. The codebase is now significantly easier to reason about, maintain, and extend for future phases.
