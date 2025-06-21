@@ -1,6 +1,8 @@
+// Enhanced PromptCanvas.tsx with production-grade readiness integration
 import React, { useState, useEffect, useCallback } from 'react';
 import { sidecarService } from '../services/SidecarService';
-import type { Provider, PromptState, ProviderConfig, ResponseState } from '../types';
+import { useReadinessFlow } from '../hooks/useReadinessFlow';
+import type { PromptState, ResponseState } from '../types';
 
 import { PromptTemplateBar } from './PromptTemplateBar';
 import { PromptComposer } from './PromptComposer';
@@ -8,68 +10,102 @@ import { ProviderSelector } from './ProviderSelector';
 import { ExecutionController } from './ExecutionController';
 import { ResultsDisplay } from './ResultsDisplay';
 
-// Static configuration of all potential providers the app knows about.
-const PROVIDER_CONFIGS: ProviderConfig[] = [
-  { id: 'chatgpt', name: 'ChatGPT', logoColor: '#10A37F' },
-  { id: 'claude', name: 'Claude', logoColor: '#D97706' },
-  { id: 'perplexity', name: 'Perplexity', logoColor: '#6B7280' },
-  { id: 'gemini', name: 'Gemini', logoColor: '#4F46E5' },
-];
-
 export const PromptCanvas: React.FC = () => {
   const [promptState, setPromptState] = useState<PromptState>({
     text: "",
     targetProviders: [],
     status: "composing",
     responses: new Map(),
+    manuallyDeselected: new Set(),
   });
   
   const [startNewChat, setStartNewChat] = useState(true);
 
-  // This state holds the list of providers and their *live* status.
-  const [providers, setProviders] = useState<Provider[]>([]);
+  // Use the production-grade readiness hook
+  const {
+    providers,
+    isInitialized,
+    globalCheckInProgress,
+    checkProvider,
+    checkAllProviders,
+    fixProvider,
+    readyProviders,
+    hasProvidersNeedingAttention,
+  } = useReadinessFlow();
+
   const isExecuting = promptState.status === 'executing';
 
-  const updatePromptState = (updates: Partial<PromptState>) => {
+  const updatePromptState = useCallback((updates: Partial<Omit<PromptState, 'manuallyDeselected'>>) => {
     setPromptState(prev => ({ ...prev, ...updates }));
-  };
+  }, []);
 
-  const fetchAndUpdateProviderStatus = useCallback(async () => {
-    try {
-      const liveTabs = await sidecarService.getAvailableTabs();
-      const liveProviderKeys = liveTabs.map(tab => tab.platformKey);
-      
-      const newProviders: Provider[] = PROVIDER_CONFIGS.map(p => ({
-        ...p,
-        status: liveProviderKeys.includes(p.id) ? 'ready' as const : 'offline' as const,
-      }));
-      setProviders(newProviders);
-
-      // Auto-select ready providers by default if none are selected
-      if (promptState.targetProviders.length === 0) {
-        const readyProviderIds = newProviders.filter(p => p.status === 'ready').map(p => p.id);
-        updatePromptState({ targetProviders: readyProviderIds });
-      }
-    } catch (error) {
-      console.error("Failed to fetch available providers:", error);
-    }
-  }, [promptState.targetProviders.length]);
-
-  // Fetch provider status on mount and set an interval to check periodically
+  // Initialize readiness checks on component mount
   useEffect(() => {
-    fetchAndUpdateProviderStatus();
-    const interval = setInterval(fetchAndUpdateProviderStatus, 5000); // Check every 5 seconds
-    return () => clearInterval(interval);
-  }, [fetchAndUpdateProviderStatus]);
+    if (!isInitialized) {
+      checkAllProviders();
+    }
+    const healthCheckInterval = setInterval(() => {
+      if (promptState.status !== 'executing') {
+        checkAllProviders();
+      }
+    }, 30000);
+    return () => clearInterval(healthCheckInterval);
+  }, [checkAllProviders, isInitialized, promptState.status]);
+
+  // Auto-select ready providers, but respect manual deselections
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const readyIds = new Set(readyProviders().map(p => p.id));
+    // Auto-select newly ready providers that haven't been manually deselected.
+    const newSelections = new Set(promptState.targetProviders);
+    for (const id of readyIds) {
+      if (!promptState.manuallyDeselected.has(id)) {
+        newSelections.add(id);
+      }
+    }
+    // Auto-deselect providers that are no longer ready.
+    for (const id of promptState.targetProviders) {
+      if (!readyIds.has(id)) {
+        newSelections.delete(id);
+      }
+    }
+    if (newSelections.size !== promptState.targetProviders.length || ![...newSelections].every(id => promptState.targetProviders.includes(id))) {
+      updatePromptState({ targetProviders: Array.from(newSelections) });
+    }
+  }, [readyProviders, isInitialized, promptState.manuallyDeselected, updatePromptState]);
+
+  const handleSelectionChange = (newSelection: string[]) => {
+    const readyIds = new Set(readyProviders().map(p => p.id));
+    const currentSelection = new Set(promptState.targetProviders);
+    const deselectedIds = new Set(promptState.manuallyDeselected);
+    // Find which providers were just turned OFF
+    currentSelection.forEach(id => {
+      if (!newSelection.includes(id)) {
+        deselectedIds.add(id);
+      }
+    });
+    // Find which providers were just turned ON
+    newSelection.forEach(id => {
+      if (!currentSelection.has(id)) {
+        deselectedIds.delete(id);
+      }
+    });
+    setPromptState(prev => ({
+      ...prev,
+      targetProviders: newSelection,
+      manuallyDeselected: deselectedIds,
+    }));
+  };
 
   const handleClear = () => {
     setPromptState({
       text: "",
       targetProviders: [],
       status: "composing",
-      responses: new Map()
+      responses: new Map(),
+      manuallyDeselected: new Set(),
     });
-    fetchAndUpdateProviderStatus();
   };
   
   const handlePromptExecution = useCallback(async () => {
@@ -148,60 +184,63 @@ export const PromptCanvas: React.FC = () => {
 
   return (
     <div className="bg-slate-900 min-h-screen p-4 sm:p-8 flex justify-center font-sans">
-        <div className="w-full max-w-4xl mx-auto flex flex-col gap-4">
-            <div className="bg-gradient-to-br from-slate-800/50 via-slate-900 to-black p-6 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 flex flex-col gap-5">
-              <div>
-                  <PromptTemplateBar onInsert={handleInsertTemplate} disabled={isExecuting} />
-                  <PromptComposer
-                      value={promptState.text}
-                      onChange={(text) => updatePromptState({ text })}
-                      disabled={isExecuting}
-                  />
-              </div>
-
-              <ProviderSelector
-                available={providers}
-                selected={promptState.targetProviders}
-                onSelectionChange={(selected) => updatePromptState({ targetProviders: selected })}
-                disabled={isExecuting}
-              />
-              
-              <div className="flex items-center gap-2 pl-1">
-                <input
-                  type="checkbox"
-                  id="start-new-chat-toggle"
-                  checked={startNewChat}
-                  onChange={(e) => setStartNewChat(e.target.checked)}
-                  disabled={isExecuting}
-                  className="w-4 h-4 rounded bg-slate-700 border-slate-600 text-indigo-500 focus:ring-indigo-600 cursor-pointer disabled:cursor-not-allowed"
+      <div className="w-full max-w-4xl mx-auto flex flex-col gap-5">
+        <div className="bg-gradient-to-br from-slate-800/50 via-slate-900 to-black p-6 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 flex flex-col gap-5">
+            <div>
+                <PromptTemplateBar onInsert={handleInsertTemplate} disabled={isExecuting} />
+                <PromptComposer
+                    value={promptState.text}
+                    onChange={(text) => updatePromptState({ text })}
+                    disabled={isExecuting}
                 />
-                <label
-                  htmlFor="start-new-chat-toggle"
-                  className={`text-sm ${isExecuting ? 'text-slate-500' : 'text-slate-300 cursor-pointer'}`}
-                >
-                  Start a new chat for each provider (clears context)
-                </label>
-              </div>
-
-              <div className="h-[1px] bg-white/10 w-full"></div>
-
-              <ExecutionController
-                promptState={promptState}
-                onExecute={handlePromptExecution}
-                onClear={handleClear}
-                onEdit={handleEdit}
-                onRetry={handleRetry}
-                onAddProvider={fetchAndUpdateProviderStatus}
-              />
             </div>
+
+            <ProviderSelector
+              available={providers}
+              selected={promptState.targetProviders}
+              onSelectionChange={handleSelectionChange}
+              onFixProvider={fixProvider}
+              onCheckAll={checkAllProviders}
+              disabled={isExecuting}
+              hasProvidersNeedingAttention={hasProvidersNeedingAttention}
+              isGlobalCheckInProgress={globalCheckInProgress}
+            />
             
-            {promptState.responses.size > 0 && (
-              <ResultsDisplay
-                responses={promptState.responses}
-                providers={providers}
+            <div className="flex items-center gap-2 pl-1">
+              <input
+                type="checkbox"
+                id="start-new-chat-toggle"
+                checked={startNewChat}
+                onChange={(e) => setStartNewChat(e.target.checked)}
+                disabled={isExecuting}
+                className="w-4 h-4 rounded bg-slate-700 border-slate-600 text-indigo-500 focus:ring-indigo-600 cursor-pointer disabled:cursor-not-allowed"
               />
-            )}
-        </div>
+              <label
+                htmlFor="start-new-chat-toggle"
+                className={`text-sm ${isExecuting ? 'text-slate-500' : 'text-slate-300 cursor-pointer'}`}
+              >
+                Start a new chat for each provider (clears context)
+              </label>
+            </div>
+
+            <div className="h-[1px] bg-white/10 w-full"></div>
+
+            <ExecutionController
+              promptState={promptState}
+              onExecute={handlePromptExecution}
+              onClear={handleClear}
+              onEdit={handleEdit}
+              onRetry={handleRetry}
+            />
+          </div>
+          
+          {promptState.responses.size > 0 && (
+            <ResultsDisplay
+              responses={promptState.responses}
+              providers={providers}
+            />
+          )}
+      </div>
     </div>
   );
 };

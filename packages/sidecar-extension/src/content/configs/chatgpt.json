@@ -2,6 +2,12 @@
   "platformKey": "chatgpt",
   "hostnames": ["chat.openai.com", "chatgpt.com"],
   "selectors": {
+    "readyMarker": [
+      "#prompt-textarea"
+    ],
+    "loginMarker": [
+      "button[data-testid='login-button']"
+    ],
     "newChat": [
       "a[href='/']",
       "button[data-testid='new-chat-button']"

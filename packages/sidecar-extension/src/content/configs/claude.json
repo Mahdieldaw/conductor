@@ -2,6 +2,13 @@
   "platformKey": "claude",
   "hostnames": ["claude.ai"],
   "selectors": {
+    "readyMarker": [
+      "div.ProseMirror"
+    ],
+    "loginMarker": [
+      "button[aria-label*='Login']",
+      "button:has-text('Continue with Google')"
+    ],
     "newChat": [
       "a[href='/new']",
       "a[href='/chats']"

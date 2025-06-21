@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, Pencil, RotateCw, Plus } from 'lucide-react';
+import { Send, Pencil, RotateCw } from 'lucide-react';
 import { PrimaryButton } from './PrimaryButton';
 import { SecondaryButton } from './SecondaryButton';
 import { QuickActionButton } from './QuickActionButton';
@@ -11,11 +11,9 @@ interface ExecutionControllerProps {
   onClear: () => void;
   onEdit: () => void;
   onRetry: () => void;
-  onAddProvider: () => void;
 }
 
-// Use 'any' for icon props to work around Lucide/React type issues
-export const ExecutionController: React.FC<ExecutionControllerProps> = ({ promptState, onExecute, onClear, onEdit, onRetry, onAddProvider }) => {
+export const ExecutionController: React.FC<ExecutionControllerProps> = ({ promptState, onExecute, onClear, onEdit, onRetry }) => {
   const isExecuting = promptState.status === 'executing';
   const hasResponses = promptState.responses.size > 0;
   const hasFailedProviders = Array.from(promptState.responses.values()).some(r => r.status === 'error');
@@ -91,10 +89,8 @@ export const ExecutionController: React.FC<ExecutionControllerProps> = ({ prompt
              Retry Failed
            </QuickActionButton>
         )}
-         <QuickActionButton onClick={onAddProvider} icon={Plus as any}>
-           Add & Re-run
-         </QuickActionButton>
       </div>
     </div>
-  );}
+  );
+}
 

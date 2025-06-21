@@ -1,20 +1,13 @@
 // provider.js - Production-Grade Concurrent Harvest Engine
 
-class Provider {
-  constructor() {
-    this.config = this._getConfigForCurrentHost();
+export class Provider {
+  constructor(config) { // Accepts config as argument
+    if (!config) {
+      throw new Error("Provider was initialized without a valid configuration.");
+    }
+    this.config = config;
     this.activeControllers = new Set(); // Track active abort controllers
-  }
-
-  // Correctly handles default exports from JSON modules.
-  _getConfigForCurrentHost() {
-    const modules = import.meta.glob('./configs/*.json', { eager: true });
-    const configs = Object.values(modules).map(m => m.default ?? m);
-
-    const hostname = window.location.hostname;
-    const config = configs.find(c => c.hostnames.some(h => hostname.includes(h)));
-    if (!config) throw new Error(`No provider configuration for hostname: ${hostname}`);
-    return config;
+    console.log(`[Sidecar Provider] Initialized with config for: ${this.config.platformKey}`);
   }
   
   // Handles an ARRAY of selectors, including searching within Shadow DOMs.
@@ -406,15 +399,38 @@ class Provider {
     });
     this.activeControllers.clear();
   }
-}
 
-// Instantiate and export the singleton provider
-let providerInstance;
-try {
-  providerInstance = new Provider();
-} catch (e) {
-  console.error('[Sidecar] Provider initialization failed:', e);
-  providerInstance = null;
-}
+  /**
+   * Performs a specific readiness check using the dedicated `readyMarker`
+   * and `loginMarker` selectors, following the specified logic.
+   */
+  async checkReadiness() {
+    const { selectors, platformKey } = this.config;
+    console.log(`[Sidecar Readiness - ${platformKey}] Checking for readiness markers.`);
 
-export { providerInstance as provider };
+    // Rule 1: Is the prompt textarea (or equivalent) present?
+    const isReadyMarkerPresent = selectors.readyMarker && this.#querySelector(selectors.readyMarker);
+
+    if (isReadyMarkerPresent) {
+      console.log(`[Sidecar Readiness - ${platformKey}] Found ready marker. Status: READY.`);
+      return { success: true, status: 'READY', message: 'Provider is ready.' };
+    }
+
+    // Rule 2: If no ready marker, is the login button present?
+    const isLoginMarkerPresent = selectors.loginMarker && this.#querySelector(selectors.loginMarker);
+
+    if (isLoginMarkerPresent) {
+      console.log(`[Sidecar Readiness - ${platformKey}] Found login marker, but no ready marker. Status: LOGIN_REQUIRED.`);
+      return { success: true, status: 'LOGIN_REQUIRED', message: 'User authentication is required.' };
+    }
+    
+    // Rule 3: If neither marker is found, the state is unknown or the page has an error.
+    const errorMessage = `Could not determine page state for ${platformKey}. Neither ready marker (e.g., prompt box) nor login marker (e.g., login button) was found. The page might be loading, showing an error, or has an unexpected layout.`;
+    console.warn(`[Sidecar Readiness - ${platformKey}] ${errorMessage}`);
+    return { 
+      success: false, 
+      status: 'SERVICE_ERROR',
+      error: errorMessage,
+    };
+  }
+}
