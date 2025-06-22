@@ -10,7 +10,7 @@ export default defineConfig({
     minify: false, // Set to true for production builds
     rollupOptions: {
       input: {
-        'background/service-worker': resolve(__dirname, 'src/background/service-worker.js'),
+        'background/service-worker': resolve(__dirname, 'src/background/service-worker.js'), // Point to the final service worker
         'content/content': resolve(__dirname, 'src/content/content.js'),
       },
       output: {

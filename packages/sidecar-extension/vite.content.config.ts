@@ -15,8 +15,15 @@ export default defineConfig({
         format: 'iife',
         entryFileNames: 'content/content.js',
       },
+      external: [], // Ensure no dependencies are treated as external
     },
     // Important: Prevents this build from clearing the output of the main build.
     emptyOutDir: false,
+  },
+  resolve: {
+    alias: {
+      '@hybrid-thinking/messaging': resolve(__dirname, '../shared-messaging/index.js'),
+      '@': resolve(__dirname, 'src')
+    }
   },
 });

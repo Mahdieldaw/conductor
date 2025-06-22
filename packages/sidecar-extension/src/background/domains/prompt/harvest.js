@@ -1,5 +1,5 @@
 import { findTabByPlatform } from '../../utils/tab-manager.js';
-import { activateTabIfConfigured } from '../../utils/tab-activator.js';
+import { activateTabIfConfigured } from '../../../utils/tab-activator.js';
 
 let configs = {};
 let configsLoaded = false;

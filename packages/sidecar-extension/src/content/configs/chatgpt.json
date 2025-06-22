@@ -3,6 +3,7 @@
   "hostnames": ["chat.openai.com", "chatgpt.com"],
   "tabActivation": {
     "enabled": true,
+    "mode": "background",
     "activateOnBroadcast": false,
     "activateOnHarvest": true,
     "activateOnReadinessCheck": false,

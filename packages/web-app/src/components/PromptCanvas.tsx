@@ -140,9 +140,15 @@ export const PromptCanvas: React.FC = () => {
       setPromptState(prev => {
         const newResponses = new Map(prev.responses);
         if ('value' in result) {
-          newResponses.set(result.providerId, { status: 'completed', data: result.value });
+          // Extract the actual data from the sidecar response object
+          const responseData = typeof result.value === 'object' && result.value?.data 
+            ? result.value.data 
+            : result.value;
+          newResponses.set(result.providerId, { status: 'completed', data: responseData });
         } else if ('reason' in result) {
-          newResponses.set(result.providerId, { status: 'error', error: result.reason?.message || String(result.reason) });
+          // Handle error responses that might be objects
+          const errorMessage = result.reason?.error || result.reason?.message || String(result.reason);
+          newResponses.set(result.providerId, { status: 'error', error: errorMessage });
         }
         return { ...prev, responses: newResponses };
       });

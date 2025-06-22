@@ -16,8 +16,7 @@
         "*://*.claude.ai/*",
         "*://*.console.anthropic.com/*"
       ],
-      "js": ["content/content.js"],
-      "type": "module"
+      "js": ["content/content.js"]
     }
   ],
   "host_permissions": [

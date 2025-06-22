@@ -3,6 +3,7 @@
   "hostnames": ["claude.ai"],
   "tabActivation": {
     "enabled": true,
+    "mode": "background",
     "activateOnBroadcast": false,
     "activateOnHarvest": true,
     "activateOnReadinessCheck": false,
