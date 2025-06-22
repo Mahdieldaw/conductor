@@ -16,6 +16,18 @@
         "*://*.claude.ai/*",
         "*://*.console.anthropic.com/*"
       ],
+      "js": ["content/readiness-detector.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://*.chatgpt.com/*",
+        "*://*.chat.openai.com/*",
+        "*://claude.ai/*",
+        "*://*.claude.ai/*",
+        "*://*.console.anthropic.com/*"
+      ],
       "js": ["content/content.js"]
     }
   ],
@@ -43,6 +55,7 @@
     {
       "resources": [
         "content/content.js",
+        "content/readiness-detector.js",
         "chunks/*.js"
       ],
       "matches": [

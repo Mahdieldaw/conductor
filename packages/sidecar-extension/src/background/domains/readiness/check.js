@@ -1,9 +1,14 @@
-import { CHECK_READINESS } from '@hybrid-thinking/messaging';
+// Simplified readiness check using direct script execution
+// This replaces the complex content script communication with a direct approach
+
 import { findTabByPlatform } from '../../utils/tab-manager.js';
 
 let configs = {};
 let configsLoaded = false;
 
+/**
+ * Load provider configurations
+ */
 async function loadConfigs() {
   if (configsLoaded) return;
   
@@ -17,11 +22,16 @@ async function loadConfigs() {
     }
     
     configsLoaded = true;
+    console.log('[Check] Provider configs loaded successfully');
   } catch (error) {
     console.error('[Check] Failed to load configs:', error);
+    throw error;
   }
 }
 
+/**
+ * Get configuration for a specific provider
+ */
 async function getProviderConfig(providerKey) {
   await loadConfigs();
   const config = configs[providerKey];
@@ -31,104 +41,110 @@ async function getProviderConfig(providerKey) {
   return config;
 }
 
-async function waitForContentScriptReady(tabId, maxRetries = 3, initialDelay = 500) {
-  if (typeof tabId !== 'number') {
-    throw new TypeError('Invalid tabId: must be a number.');
-  }
-
+/**
+ * Execute readiness check using direct script injection
+ * This is much simpler and more reliable than content script messaging
+ */
+async function executeReadinessCheck(tabId, config) {
   try {
-    const tab = await chrome.tabs.get(tabId);
-    console.log(`[ContentScript] Verifying tab ${tabId}: ${tab.url}`);
-  } catch (error) {
-    throw new Error(`Tab ${tabId} not accessible: ${error.message}`);
-  }
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const delay = initialDelay * Math.pow(2, attempt - 1); // Exponential backoff
-      console.log(`[ContentScript] Attempt ${attempt}/${maxRetries}, waiting ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-
-      const response = await chrome.tabs.sendMessage(tabId, { type: 'HEALTH_CHECK' });
-
-      if (response?.healthy) {
-        console.log(`[ContentScript] Ready on attempt ${attempt}.`);
-        return;
-      }
-      throw new Error('Health check failed or returned unhealthy.');
-    } catch (error) {
-      console.warn(`[ContentScript] Attempt ${attempt} failed: ${error.message}`);
-      if (attempt === maxRetries) {
-        throw new Error(`Content script not ready after ${maxRetries} attempts.`);
-      }
-    }
-  }
-}
-
-
-
-async function injectContentScriptFallback(tabId) {
-  try {
-    console.log(`[ContentScript] Attempting manual injection fallback for tab ${tabId}`);
+    console.log(`[Check] Executing readiness check for tab ${tabId}`);
     
-    // Try to inject the content script manually
-    await chrome.scripting.executeScript({
+    // Execute the readiness check directly in the tab
+    const results = await chrome.scripting.executeScript({
       target: { tabId },
-      files: ['content/content.js']
+      func: (config) => {
+        // This function runs in the context of the target tab
+        try {
+          // Check if our readiness detector is available
+          if (!window.hybrid || typeof window.hybrid.checkReadiness !== 'function') {
+            return {
+              success: false,
+              status: 'SERVICE_ERROR',
+              error: 'Readiness detector not available. Please refresh the page.'
+            };
+          }
+          
+          // Call the readiness check function
+          return window.hybrid.checkReadiness(config);
+          
+        } catch (error) {
+          return {
+            success: false,
+            status: 'SERVICE_ERROR',
+            error: `Readiness check execution failed: ${error.message}`
+          };
+        }
+      },
+      args: [config]
     });
     
-    console.log(`[ContentScript] Manual injection completed for tab ${tabId}`);
+    // Extract the result from the execution
+    const result = results[0]?.result;
     
-    // Wait a bit for the script to initialize
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!result) {
+      throw new Error('No result returned from readiness check execution');
+    }
+    
+    console.log(`[Check] Readiness check completed:`, result);
+    return result;
     
   } catch (error) {
-    console.warn(`[ContentScript] Manual injection failed for tab ${tabId}:`, error.message);
-    throw error;
+    console.error(`[Check] Script execution failed for tab ${tabId}:`, error);
+    
+    // Return a structured error response
+    return {
+      success: false,
+      status: 'TAB_NOT_READY',
+      error: `Failed to execute readiness check: ${error.message}`
+    };
   }
 }
 
+/**
+ * Main readiness check function
+ * Simplified architecture: find tab -> execute check -> return result
+ */
 export async function check({ providerKey }) {
-  const config = await getProviderConfig(providerKey);
-  const tab = await findTabByPlatform(providerKey);
-
-  if (!tab || typeof tab.tabId !== 'number') {
-    return { status: 'TAB_NOT_OPEN', message: `${config.name} tab not found.`, data: { url: config.url } };
-  }
-
   try {
-    await waitForContentScriptReady(tab.tabId);
-  } catch (error) {
-    console.warn(`[Handler:CheckReadiness] Content script not ready. Attempting manual injection for tab ${tab.tabId}...`);
-    try {
-      await injectContentScriptFallback(tab.tabId);
-      await waitForContentScriptReady(tab.tabId, 2, 1000); // Re-check after injection
-    } catch (fallbackError) {
-      return { 
-        status: 'TAB_NOT_READY', 
-        message: 'Content script failed to load. Please refresh the tab.', 
-        data: { url: config.url, error: fallbackError.message } 
+    // Load provider configuration
+    const config = await getProviderConfig(providerKey);
+    
+    // Find the target tab
+    const tab = await findTabByPlatform(providerKey);
+    
+    if (!tab || typeof tab.tabId !== 'number') {
+      return {
+        status: 'TAB_NOT_OPEN',
+        message: `${config.name} tab not found. Please open ${config.name} in a browser tab.`,
+        data: { url: config.url }
       };
     }
-  }
-
-  try {
-    const response = await chrome.tabs.sendMessage(tab.tabId, {
-      type: CHECK_READINESS,
-      payload: { config },
-    });
-
-    if (!response?.success) {
-      throw new Error(response?.error || 'Readiness check failed.');
+    
+    // Execute the readiness check
+    const result = await executeReadinessCheck(tab.tabId, config);
+    
+    // Handle the result
+    if (result.success) {
+      return {
+        status: result.status,
+        message: result.message,
+        data: { tabId: tab.tabId }
+      };
+    } else {
+      return {
+        status: result.status || 'SERVICE_ERROR',
+        message: result.error || 'Readiness check failed',
+        data: { url: config.url, tabId: tab.tabId }
+      };
     }
-
-    return { status: response.status, message: response.message, data: { tabId: tab.tabId } };
+    
   } catch (error) {
-    console.error(`[Handler:CheckReadiness] Final check failed for ${providerKey}:`, error);
-    return { 
-      status: 'TAB_NOT_READY', 
-      message: 'Connection to tab failed. It may be loading or unresponsive.', 
-      data: { url: config.url, error: error.message }
+    console.error(`[Check] Readiness check failed for ${providerKey}:`, error);
+    
+    return {
+      status: 'SERVICE_ERROR',
+      message: `Readiness check failed: ${error.message}`,
+      data: { providerKey }
     };
   }
 }

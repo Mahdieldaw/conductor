@@ -1,5 +1,4 @@
 import {
-  CHECK_READINESS,
   START_NEW_CHAT,
   BROADCAST_PROMPT,
   HARVEST_RESPONSE,
@@ -29,27 +28,22 @@ if (!window.sidecarInjected) {
       return;
     }
     
-    // The CHECK_READINESS message is special. It also initializes the provider.
-    if (message.type === CHECK_READINESS) {
-      // Allow re-initialization on subsequent checks, in case page state changed.
+    // Initialize provider on first message if not already done
+    if (!provider && message.payload?.config) {
       try {
         provider = new Provider(message.payload.config);
         window.provider = provider; // For debugging
-        console.log('[Sidecar] Provider instance created/updated:', provider.config.platformKey);
+        console.log('[Sidecar] Provider instance created:', provider.config.platformKey);
       } catch (e) {
         console.error('[Sidecar] Failed to initialize provider:', e);
         sendResponse({ success: false, error: e.message });
-        return; // Must return early
+        return;
       }
-      
-      console.log('[Sidecar Content] Received CHECK_READINESS request.');
-      provider.checkReadiness().then(sendResponse).catch(e => sendResponse({ success: false, error: e.message, status: 'SERVICE_ERROR' }));
-      return true; // Keep channel open for async response
     }
 
-    // For all other messages, we must ensure the provider has been initialized.
+    // Ensure provider is initialized for all operations
     if (!provider) {
-      const errorMsg = 'Provider not initialized. A readiness check must be performed first.';
+      const errorMsg = 'Provider not initialized. Please ensure configuration is provided.';
       console.error(`[Sidecar Content] Error: ${errorMsg}`);
       sendResponse({ success: false, error: errorMsg });
       return false;

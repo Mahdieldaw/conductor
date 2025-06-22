@@ -12,6 +12,7 @@ export default defineConfig({
       input: {
         'background/service-worker': resolve(__dirname, 'src/background/service-worker.js'), // Point to the final service worker
         'content/content': resolve(__dirname, 'src/content/content.js'),
+        'content/readiness-detector': resolve(__dirname, 'src/content/readiness-detector.js'),
       },
       output: {
           format: 'es',
