@@ -1,24 +1,62 @@
-import { findTabByPlatform } from '../../utils/tab-finder.js';
-import { HARVEST_RESPONSE } from '@hybrid-thinking/messaging';
+import { findTabByPlatform } from '../../utils/tab-manager.js';
+import { activateTabIfConfigured } from '../../utils/tab-activator.js';
 
-/**
- * Handles harvesting a response from a specific platform's tab.
- * @param {object} payload - The message payload.
- * @param {string} payload.platform - The platform key (e.g., 'chatgpt', 'claude').
- * @returns {Promise<object>} A promise that resolves with the harvested response data or rejects with an error.
- */
-export default async function harvest({ platform }) {
-  const targetTab = findTabByPlatform(platform);
-  if (!targetTab) throw new Error(`Harvest failed: No active tab for platform: ${platform}`);
+let configs = {};
+let configsLoaded = false;
 
-  const response = await chrome.tabs.sendMessage(targetTab.tabId, {
-    type: HARVEST_RESPONSE,
-    payload: { platform }
-  });
+async function loadConfigs() {
+  if (configsLoaded) return;
+  
+  try {
+    const configNames = ['chatgpt', 'claude'];
+    
+    for (const name of configNames) {
+      const url = chrome.runtime.getURL(`content/configs/${name}.json`);
+      const response = await fetch(url);
+      configs[name] = await response.json();
+    }
+    
+    configsLoaded = true;
+  } catch (error) {
+    console.error('[Harvest] Failed to load configs:', error);
+  }
+}
 
-  if (response && response.success === false) {
-    throw new Error(response.error || 'Harvest failed in content script.');
+async function getProviderConfig(platformKey) {
+  await loadConfigs();
+  const config = configs[platformKey];
+  if (!config) {
+    throw new Error(`Config file not found for platform: ${platformKey}`);
+  }
+  return config;
+}
+
+export default async function harvest(payload) {
+  const { platform } = payload;
+  
+  if (!platform) {
+    throw new Error('Platform is required for harvesting.');
   }
 
-  return response.data;
+  console.log(`[Harvest] Starting harvest for platform: ${platform}`);
+
+  // Find the tab for this platform
+  const tab = await findTabByPlatform(platform);
+  if (!tab) {
+    throw new Error(`No tab found for platform: ${platform}`);
+  }
+
+  console.log(`[Harvest] Found tab for ${platform}:`, tab.tabId);
+
+  // Get provider config and check if tab activation is needed
+  const config = await getProviderConfig(platform);
+  await activateTabIfConfigured(tab.tabId, config, 'harvest');
+
+  // Send harvest message to the content script
+  const response = await chrome.tabs.sendMessage(tab.tabId, {
+    type: 'HARVEST_RESPONSE'
+  });
+
+  console.log(`[Harvest] Response from ${platform}:`, response);
+  return response;
 }

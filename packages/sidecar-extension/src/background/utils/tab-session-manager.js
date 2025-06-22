@@ -1,5 +1,5 @@
 // packages/sidecar-extension/src/background/tab-session-manager.js
-import { tabManager } from './tab-manager.js';
+import { getPlatformKey } from './tab-manager.js';
 import { START_NEW_CHAT } from '@hybrid-thinking/messaging';
 
 /**
@@ -35,9 +35,23 @@ class TabSessionManager {
    * @returns {Promise<string>} The new session ID.
    */
   async resetSession(tabId) {
-    const tabInfo = tabManager.getTabById(tabId);
-    if (!tabInfo) {
-      throw new Error(`[TabSessionManager] No tab info found for tabId: ${tabId}`);
+    // Get fresh tab info from browser API
+    let tabInfo;
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (!tab || !tab.url) {
+        throw new Error(`Tab ${tabId} not found or has no URL`);
+      }
+      
+      const hostname = new URL(tab.url).hostname;
+      const platformKey = getPlatformKey(hostname);
+      if (!platformKey) {
+        throw new Error(`Tab ${tabId} is not on a supported platform`);
+      }
+      
+      tabInfo = { platformKey, url: tab.url, hostname };
+    } catch (error) {
+      throw new Error(`[TabSessionManager] No tab info found for tabId: ${tabId}. ${error.message}`);
     }
 
     // Step 1: Command the content script to click the "New Chat" button.

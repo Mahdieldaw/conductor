@@ -1,6 +1,13 @@
 {
   "platformKey": "claude",
   "hostnames": ["claude.ai"],
+  "tabActivation": {
+    "enabled": true,
+    "activateOnBroadcast": false,
+    "activateOnHarvest": true,
+    "activateOnReadinessCheck": false,
+    "stabilizationDelay": 500
+  },
   "selectors": {
     "readyMarker": [
       "div.ProseMirror"
@@ -24,9 +31,14 @@
       "button[aria-label='Send message']"
     ],
     "responseContainer": [
-      "div.font-claude-message:last-of-type",
-      "div[data-is-streaming='false']:last-of-type .font-claude-message",
-      "div.font-claude-message"
+      "div[data-is-streaming='false']:last-of-type div.font-claude-message",
+      "div.group:last-of-type div.font-claude-message",
+      "main div[data-is-streaming='false']:last-of-type .font-claude-message",
+      "main > div:last-of-type div.font-claude-message",
+      "div[data-is-streaming='false']:last-of-type [class*='font-claude']",
+      "main div.group:last-of-type div[class*='font-claude']",
+      "div.group.relative:last-of-type div.font-claude-message",
+      "main div:last-of-type div.font-claude-message"
     ],
     "conversationWrapper": [
       "main",

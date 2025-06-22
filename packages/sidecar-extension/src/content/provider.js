@@ -283,7 +283,7 @@ export class Provider {
 
       if (allChecksPassed) {
         console.log(`[Sidecar Harvest - ${platformKey}] ✅ Polling checks passed on attempt ${attempt + 1}`);
-        await this.#abortableDelay(500, signal); // Stabilization delay
+        await this.#abortableDelay(2000, signal); // Stabilization delay
         const result = this.#performScrape();
         if (result) return result;
         throw new Error("Polling detected completion but scraping returned empty result");
@@ -330,7 +330,7 @@ export class Provider {
         if (this.#querySelector(completionMarkerSelector)) {
           console.log(`[Sidecar Harvest - ${platformKey}] ✅ Completion marker detected by observer.`);
           cleanup();
-          setTimeout(() => !signal?.aborted && resolve(this.#performScrape()), 200); // Stabilization delay
+          setTimeout(() => !signal?.aborted && resolve(this.#performScrape()), 1700); // Stabilization delay
         }
       });
 
@@ -348,15 +348,47 @@ export class Provider {
    * Uses the 'responseContainer' selectors from the config.
    */
   #performScrape() {
-    const { selectors } = this.config;
+    const { selectors, platformKey } = this.config;
     const responseSelector = selectors.responseContainer;
-    if (!responseSelector || !Array.isArray(responseSelector)) return null;
+    if (!responseSelector || !Array.isArray(responseSelector)) {
+      console.error(`[Sidecar Scrape - ${platformKey}] ❌ No responseContainer selectors configured`);
+      return null;
+    }
 
+    console.log(`[Sidecar Scrape - ${platformKey}] 🔍 Trying selectors:`, responseSelector);
+    
+    // Try each selector individually for better debugging
+    for (let i = 0; i < responseSelector.length; i++) {
+      const selector = responseSelector[i];
+      const elements = document.querySelectorAll(selector);
+      console.log(`[Sidecar Scrape - ${platformKey}] Selector '${selector}' found ${elements.length} elements`);
+      
+      if (elements.length > 0) {
+        const lastElement = elements[elements.length - 1];
+        const textContent = lastElement?.textContent?.trim();
+        console.log(`[Sidecar Scrape - ${platformKey}] Last element text length: ${textContent?.length || 0}`);
+        
+        if (textContent && textContent.length > 0) {
+          console.log(`[Sidecar Scrape - ${platformKey}] ✅ Successfully scraped ${textContent.length} characters`);
+          return textContent;
+        }
+      }
+    }
+    
+    // Fallback: try combined selector
     const responseElements = document.querySelectorAll(responseSelector.join(','));
-    if (responseElements.length === 0) return null;
+    console.log(`[Sidecar Scrape - ${platformKey}] Combined selector found ${responseElements.length} elements`);
+    
+    if (responseElements.length === 0) {
+      console.error(`[Sidecar Scrape - ${platformKey}] ❌ No elements found with any selector`);
+      return null;
+    }
 
     const lastElement = responseElements[responseElements.length - 1];
-    return lastElement?.textContent?.trim() || null;
+    const textContent = lastElement?.textContent?.trim();
+    console.log(`[Sidecar Scrape - ${platformKey}] Final attempt - text length: ${textContent?.length || 0}`);
+    
+    return textContent || null;
   }
 
   /**

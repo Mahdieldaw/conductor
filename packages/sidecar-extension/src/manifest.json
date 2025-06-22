@@ -7,10 +7,23 @@
     "service_worker": "background/service-worker.js",
     "type": "module"
   },
-  "content_scripts": [],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.chatgpt.com/*",
+        "*://*.chat.openai.com/*",
+        "*://claude.ai/*",
+        "*://*.claude.ai/*",
+        "*://*.console.anthropic.com/*"
+      ],
+      "js": ["content/content.js"],
+      "type": "module"
+    }
+  ],
   "host_permissions": [
     "*://*.chatgpt.com/*",
     "*://*.chat.openai.com/*",
+    "*://claude.ai/*",
     "*://*.claude.ai/*",
     "*://*.console.anthropic.com/*"
   ],
@@ -36,6 +49,7 @@
       "matches": [
         "*://*.chatgpt.com/*",
         "*://*.chat.openai.com/*",
+        "*://claude.ai/*",
         "*://*.claude.ai/*",
         "*://*.console.anthropic.com/*"
       ]

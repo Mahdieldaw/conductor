@@ -1,4 +1,4 @@
-import { findTabByPlatform } from '../../utils/tab-finder.js';
+import { findTabByPlatform } from '../../utils/tab-manager.js';
 import { tabSessionManager } from '../../utils/tab-session-manager.js';
 
 /**

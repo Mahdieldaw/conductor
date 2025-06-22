@@ -16,7 +16,19 @@ if (!window.sidecarInjected) {
 
   console.log('[Sidecar] Unified content script loaded and listener attached.');
 
+  // Add to the existing message listener
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Health check endpoint
+    if (message.type === 'HEALTH_CHECK') {
+      sendResponse({ 
+        healthy: true, 
+        timestamp: Date.now(),
+        providerInitialized: !!provider,
+        pageUrl: window.location.href
+      });
+      return;
+    }
+    
     // The CHECK_READINESS message is special. It also initializes the provider.
     if (message.type === CHECK_READINESS) {
       // Allow re-initialization on subsequent checks, in case page state changed.
@@ -62,5 +74,16 @@ if (!window.sidecarInjected) {
         sendResponse({ success: false, error: e.message });
         return false;
     }
+  });
+  
+  // Add connection monitoring
+  let connectionHealthy = true;
+  chrome.runtime.onConnect.addListener(() => {
+    connectionHealthy = true;
+  });
+  
+  chrome.runtime.onDisconnect.addListener(() => {
+    connectionHealthy = false;
+    console.warn('[Sidecar] Runtime connection lost');
   });
 }

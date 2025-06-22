@@ -1,6 +1,13 @@
 {
   "platformKey": "chatgpt",
   "hostnames": ["chat.openai.com", "chatgpt.com"],
+  "tabActivation": {
+    "enabled": true,
+    "activateOnBroadcast": false,
+    "activateOnHarvest": true,
+    "activateOnReadinessCheck": false,
+    "stabilizationDelay": 500
+  },
   "selectors": {
     "readyMarker": [
       "#prompt-textarea"
@@ -22,7 +29,12 @@
     ],
     "responseContainer": [
       "div[data-message-author-role='assistant']:last-of-type .markdown",
-      "div[data-message-author-role='assistant']:last-of-type div[class*='prose']"
+      "div[data-message-author-role='assistant']:last-of-type div[class*='prose']",
+      "div[data-message-author-role='assistant']:last-of-type div[class*='markdown']",
+      "div[data-message-author-role='assistant']:last-of-type",
+      "[data-message-author-role='assistant']:last-of-type",
+      "div[data-testid*='conversation-turn']:last-of-type [data-message-author-role='assistant']",
+      "div[data-testid*='conversation-turn']:last-of-type div:not([data-message-author-role='user'])"
     ],
     "conversationWrapper": [
       "main",
@@ -57,7 +69,7 @@
     }
   ],
   "harvestStrategy": {
-    "method": "concurrent",
+    "method": "observer",
     "observeTarget": "conversationWrapper",
     "timeout": 45000,
     "maxAttempts": 8,

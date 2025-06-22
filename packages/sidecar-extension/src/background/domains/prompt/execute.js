@@ -1,6 +1,6 @@
-import { findTabByPlatform } from '../../utils/tab-finder.js';
 import broadcast from './broadcast.js';
 import harvest from './harvest.js';
+import { findTabByPlatform } from '../../utils/tab-manager.js';
 
 /**
  * Orchestrates the full prompt execution workflow: broadcasting the prompt and then harvesting the response.
@@ -11,7 +11,7 @@ import harvest from './harvest.js';
  * @returns {Promise<string>} A promise that resolves with the harvested response or rejects with an error.
  */
 export default async function execute({ platform, prompt, sessionId }) {
-  const targetTab = findTabByPlatform(platform);
+  const targetTab = await findTabByPlatform(platform);
   if (!targetTab) throw new Error(`No active tab for platform: ${platform}`);
 
   await broadcast({ platform, prompt });

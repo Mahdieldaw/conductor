@@ -10,17 +10,23 @@ export default defineConfig({
     minify: false, // Set to true for production builds
     rollupOptions: {
       input: {
-        'background/service-worker': resolve(__dirname, 'src/background/service-worker.js'), // Point to the final service worker
+        'background/service-worker': resolve(__dirname, 'src/background/service-worker.js'),
         'content/content': resolve(__dirname, 'src/content/content.js'),
       },
       output: {
-        format: 'es',
-        entryFileNames: '[name].js',
-        chunkFileNames: 'chunks/[name].js',
-        assetFileNames: 'assets/[name][extname]',
-      },
+          format: 'es',
+          entryFileNames: '[name].js',
+          chunkFileNames: 'chunks/[name].js',
+          assetFileNames: 'assets/[name][extname]'
+        },
       external: [],
     },
+  },
+  assetsInclude: ['**/*.json'],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src')
+    }
   },
   plugins: [
     react(),

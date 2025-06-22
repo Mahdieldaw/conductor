@@ -1,4 +1,4 @@
-import { getAllTabs } from '../../utils/tab-finder.js';
+import { getAllTabs } from '../../utils/tab-manager.js';
 
 /**
  * Retrieves a list of all available LLM tabs managed by the extension.

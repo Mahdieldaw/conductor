@@ -1,5 +1,5 @@
-import { findTabByPlatform } from '../../utils/tab-finder.js';
 import { BROADCAST_PROMPT } from '@hybrid-thinking/messaging';
+import { findTabByPlatform } from '../../utils/tab-manager.js';
 
 /**
  * Handles broadcasting a prompt to a specific platform's tab.
@@ -9,8 +9,13 @@ import { BROADCAST_PROMPT } from '@hybrid-thinking/messaging';
  * @returns {Promise<object>} A promise that resolves with the content script's response or rejects with an error.
  */
 export default async function broadcast({ platform, prompt }) {
-  const targetTab = findTabByPlatform(platform);
+  const targetTab = await findTabByPlatform(platform);
   if (!targetTab) throw new Error(`Broadcast failed: No active tab for platform: ${platform}`);
+
+  // Validate that we have a valid tab ID
+  if (typeof targetTab.tabId !== 'number') {
+    throw new Error(`Invalid tab ID received for platform ${platform}: ${targetTab.tabId}`);
+  }
 
   const response = await chrome.tabs.sendMessage(targetTab.tabId, {
     type: BROADCAST_PROMPT,

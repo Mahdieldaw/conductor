@@ -1,69 +1,134 @@
 import { CHECK_READINESS } from '@hybrid-thinking/messaging';
-import { tabManager } from '../../utils/tab-manager.js';
+import { findTabByPlatform } from '../../utils/tab-manager.js';
 
-const configs = import.meta.glob('/src/content/configs/*.json', { eager: true });
+let configs = {};
+let configsLoaded = false;
 
-function getProviderConfig(providerKey) {
-  const path = `/src/content/configs/${providerKey}.json`;
-  const configModule = configs[path];
-  if (!configModule) {
-    throw new Error(`Config file not found for provider: ${providerKey}`);
+async function loadConfigs() {
+  if (configsLoaded) return;
+  
+  try {
+    const configNames = ['chatgpt', 'claude'];
+    
+    for (const name of configNames) {
+      const url = chrome.runtime.getURL(`content/configs/${name}.json`);
+      const response = await fetch(url);
+      configs[name] = await response.json();
+    }
+    
+    configsLoaded = true;
+  } catch (error) {
+    console.error('[Check] Failed to load configs:', error);
   }
-  return configModule.default || configModule;
 }
 
-async function injectContentModule(tabId) {
-  // This check is critical. If tabId is undefined, we can't proceed.
-  if (typeof tabId !== 'number') {
-    throw new TypeError("Failed to inject script: tabId is not a number.");
+async function getProviderConfig(providerKey) {
+  await loadConfigs();
+  const config = configs[providerKey];
+  if (!config) {
+    throw new Error(`Config file not found for provider: ${providerKey}`);
   }
+  return config;
+}
+
+async function waitForContentScriptReady(tabId, maxRetries = 3, initialDelay = 500) {
+  if (typeof tabId !== 'number') {
+    throw new TypeError('Invalid tabId: must be a number.');
+  }
+
   try {
+    const tab = await chrome.tabs.get(tabId);
+    console.log(`[ContentScript] Verifying tab ${tabId}: ${tab.url}`);
+  } catch (error) {
+    throw new Error(`Tab ${tabId} not accessible: ${error.message}`);
+  }
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const delay = initialDelay * Math.pow(2, attempt - 1); // Exponential backoff
+      console.log(`[ContentScript] Attempt ${attempt}/${maxRetries}, waiting ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+
+      const response = await chrome.tabs.sendMessage(tabId, { type: 'HEALTH_CHECK' });
+
+      if (response?.healthy) {
+        console.log(`[ContentScript] Ready on attempt ${attempt}.`);
+        return;
+      }
+      throw new Error('Health check failed or returned unhealthy.');
+    } catch (error) {
+      console.warn(`[ContentScript] Attempt ${attempt} failed: ${error.message}`);
+      if (attempt === maxRetries) {
+        throw new Error(`Content script not ready after ${maxRetries} attempts.`);
+      }
+    }
+  }
+}
+
+
+
+async function injectContentScriptFallback(tabId) {
+  try {
+    console.log(`[ContentScript] Attempting manual injection fallback for tab ${tabId}`);
+    
+    // Try to inject the content script manually
     await chrome.scripting.executeScript({
-      target: { tabId: tabId }, // Use the passed tabId directly
-      func: () => {
-        if (window.sidecarInjected) { return; }
-        window.sidecarInjected = true;
-        import(chrome.runtime.getURL('content/content.js'));
-      },
+      target: { tabId },
+      files: ['content/content.js']
     });
-  } catch (e) {
-    console.error(`Failed to inject content script into tab ${tabId}:`, e);
-    throw e;
+    
+    console.log(`[ContentScript] Manual injection completed for tab ${tabId}`);
+    
+    // Wait a bit for the script to initialize
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+  } catch (error) {
+    console.warn(`[ContentScript] Manual injection failed for tab ${tabId}:`, error.message);
+    throw error;
   }
 }
 
 export async function check({ providerKey }) {
-  const config = getProviderConfig(providerKey);
-  const tab = await tabManager.findTabByPlatform(providerKey);
-  
+  const config = await getProviderConfig(providerKey);
+  const tab = await findTabByPlatform(providerKey);
+
   if (!tab || typeof tab.tabId !== 'number') {
-    return { status: 'TAB_NOT_OPEN', message: `${config.name || providerKey} tab is not open.`, data: { url: config.url } };
+    return { status: 'TAB_NOT_OPEN', message: `${config.name} tab not found.`, data: { url: config.url } };
   }
 
   try {
-    // THE FIX: We now explicitly pass `tab.tabId` to the injection function.
-    await injectContentModule(tab.tabId);
-    
-    // Give the module a moment to load and attach its listener.
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await waitForContentScriptReady(tab.tabId);
+  } catch (error) {
+    console.warn(`[Handler:CheckReadiness] Content script not ready. Attempting manual injection for tab ${tab.tabId}...`);
+    try {
+      await injectContentScriptFallback(tab.tabId);
+      await waitForContentScriptReady(tab.tabId, 2, 1000); // Re-check after injection
+    } catch (fallbackError) {
+      return { 
+        status: 'TAB_NOT_READY', 
+        message: 'Content script failed to load. Please refresh the tab.', 
+        data: { url: config.url, error: fallbackError.message } 
+      };
+    }
+  }
 
-    // And we use `tab.tabId` for sending the message.
+  try {
     const response = await chrome.tabs.sendMessage(tab.tabId, {
       type: CHECK_READINESS,
-      payload: { config }
+      payload: { config },
     });
-    
-    if (!response || response.success === false) {
-      throw new Error(response?.error || 'Content script did not respond correctly.');
-    }
-    
-    return { status: response.status, message: response.message, data: { tabId: tab.tabId } };
 
-  } catch (error) {
-    console.error(`[Handler:CheckReadiness] Error checking readiness for ${providerKey} in tab ${tab.tabId}:`, error);
-    if (error.message.includes("Could not establish connection")) {
-      return { status: 'TAB_NOT_READY', message: 'Tab is still loading or not responding. Please try rechecking.', data: { url: config.url } };
+    if (!response?.success) {
+      throw new Error(response?.error || 'Readiness check failed.');
     }
-    throw new Error(`Failed to check readiness for ${providerKey}: ${error.message}`);
+
+    return { status: response.status, message: response.message, data: { tabId: tab.tabId } };
+  } catch (error) {
+    console.error(`[Handler:CheckReadiness] Final check failed for ${providerKey}:`, error);
+    return { 
+      status: 'TAB_NOT_READY', 
+      message: 'Connection to tab failed. It may be loading or unresponsive.', 
+      data: { url: config.url, error: error.message }
+    };
   }
 }
