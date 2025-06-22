@@ -1,4 +1,5 @@
 import { findTabByPlatform } from '../../utils/tab-manager.js';
+import { HARVEST_RESPONSE } from '@hybrid-thinking/messaging';
 import { activateTabIfConfigured } from '../../../utils/tab-activator.js';
 
 let configs = {};
@@ -54,7 +55,8 @@ export default async function harvest(payload) {
 
   // Send harvest message to the content script
   const response = await chrome.tabs.sendMessage(tab.tabId, {
-    type: 'HARVEST_RESPONSE'
+    type: HARVEST_RESPONSE,
+    payload: {}
   });
 
   console.log(`[Harvest] Response from ${platform}:`, response);

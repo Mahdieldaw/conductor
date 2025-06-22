@@ -5,7 +5,12 @@ import {
   HARVEST_RESPONSE,
   BROADCAST_PROMPT,
   RESET_SESSION,
-  CHECK_READINESS
+  CHECK_READINESS,
+  EXECUTE_WORKFLOW,
+  WORKFLOW_STATUS,
+  WORKFLOW_RESULT,
+  GET_HOT_CACHE,
+  GET_FULL_HISTORY
 } from '@hybrid-thinking/messaging';
 
 // This service is a singleton that abstracts all communication with the Sidecar Extension.
@@ -140,6 +145,45 @@ class SidecarService {
           type: CHECK_READINESS,
           payload: { providerKey }
       });
+  }
+
+  // Workflow methods
+  async executeWorkflow(workflowId, steps, tabId, options = {}) {
+    return this.#sendMessage({
+      type: EXECUTE_WORKFLOW,
+      workflowId,
+      steps,
+      tabId,
+      options
+    });
+  }
+
+  async getWorkflowStatus(sessionId) {
+    return this.#sendMessage({
+      type: WORKFLOW_STATUS,
+      sessionId
+    });
+  }
+
+  async getWorkflowResult(sessionId) {
+    return this.#sendMessage({
+      type: WORKFLOW_RESULT,
+      sessionId
+    });
+  }
+
+  // Memory methods
+  async getHotCache() {
+    return this.#sendMessage({
+      type: GET_HOT_CACHE
+    });
+  }
+
+  async getFullHistory(options = {}) {
+    return this.#sendMessage({
+      type: GET_FULL_HISTORY,
+      options
+    });
   }
 }
 

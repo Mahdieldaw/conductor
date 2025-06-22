@@ -8,6 +8,8 @@ import * as promptDomain from './domains/prompt/index.js';
 import * as readinessDomain from './domains/readiness/index.js';
 import * as sessionDomain from './domains/session/index.js';
 import * as systemDomain from './domains/system/index.js';
+import * as workflowDomain from './domains/workflow/index.js';
+import * as memoryDomain from './domains/memory/index.js';
 import {
   EXECUTE_PROMPT,
   HARVEST_RESPONSE,
@@ -16,7 +18,12 @@ import {
   ATTEMPT_RECOVERY,
   GET_AVAILABLE_TABS,
   RESET_SESSION,
-  PING
+  PING,
+  EXECUTE_WORKFLOW,
+  WORKFLOW_STATUS,
+  WORKFLOW_RESULT,
+  GET_HOT_CACHE,
+  GET_FULL_HISTORY
 } from '@hybrid-thinking/messaging';
 import { tabManager } from './utils/tab-manager.js'; // Import tabManager
 
@@ -29,7 +36,12 @@ const router = createMessageRouter({
   [BROADCAST_PROMPT]: promptDomain.broadcast,
   [HARVEST_RESPONSE]: promptDomain.harvest,
   [CHECK_READINESS]: readinessDomain.check,
-  [ATTEMPT_RECOVERY]: readinessDomain.recover
+  [ATTEMPT_RECOVERY]: readinessDomain.recover,
+  [EXECUTE_WORKFLOW]: workflowDomain.execute,
+  [WORKFLOW_STATUS]: workflowDomain.status,
+  [WORKFLOW_RESULT]: workflowDomain.result,
+  [GET_HOT_CACHE]: memoryDomain.getHotCache,
+  [GET_FULL_HISTORY]: memoryDomain.getFullHistory
 }, {
   middleware: [loggingMiddleware, metricsMiddleware, validationMiddleware],
   errorHandler: handleError

@@ -1,4 +1,5 @@
 import {
+  CHECK_READINESS,
   START_NEW_CHAT,
   BROADCAST_PROMPT,
   HARVEST_RESPONSE,
@@ -7,18 +8,20 @@ import { Provider } from './provider.js';
 
 // --- START: NEW INITIALIZATION GUARD ---
 // This ensures the listener is only attached once per page context.
-if (!window.sidecarInjected) {
-  window.sidecarInjected = true;
+if (!window.hybridHasInitialized) {
+  window.hybridHasInitialized = true;
   // --- END: NEW INITIALIZATION GUARD ---
 
+  console.log('[Sidecar] Content script initializing...');
+  
   let provider = null;
 
-  console.log('[Sidecar] Unified content script loaded and listener attached.');
-
-  // Add to the existing message listener
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // This listener handles ALL commands from the service worker.
+    const { type, payload } = message;
+
     // Health check endpoint
-    if (message.type === 'HEALTH_CHECK') {
+    if (type === 'HEALTH_CHECK') {
       sendResponse({ 
         healthy: true, 
         timestamp: Date.now(),
@@ -27,57 +30,70 @@ if (!window.sidecarInjected) {
       });
       return;
     }
-    
-    // Initialize provider on first message if not already done
-    if (!provider && message.payload?.config) {
+
+    // The CHECK_READINESS action is special: it creates the provider instance.
+    if (type === CHECK_READINESS) {
       try {
-        provider = new Provider(message.payload.config);
+        // We create a new provider instance every time readiness is checked,
+        // to ensure we have the latest config.
+        provider = new Provider(payload.config);
         window.provider = provider; // For debugging
-        console.log('[Sidecar] Provider instance created:', provider.config.platformKey);
+        console.log('[Sidecar] Provider instance created for readiness check:', provider.config.platformKey);
+        provider.checkReadiness().then(sendResponse).catch(e => {
+          console.error('[Sidecar] Readiness check failed:', e);
+          sendResponse({ success: false, status: 'SERVICE_ERROR', error: e.message });
+        });
       } catch (e) {
-        console.error('[Sidecar] Failed to initialize provider:', e);
-        sendResponse({ success: false, error: e.message });
-        return;
+        console.error('[Sidecar] Failed to initialize provider for readiness check:', e);
+        sendResponse({ success: false, status: 'SERVICE_ERROR', error: e.message });
       }
+      return true; // async
     }
 
-    // Ensure provider is initialized for all operations
+    // For all other actions, we first check if the provider was initialized.
     if (!provider) {
-      const errorMsg = 'Provider not initialized. Please ensure configuration is provided.';
-      console.error(`[Sidecar Content] Error: ${errorMsg}`);
+      const errorMsg = 'Provider not initialized. A CHECK_READINESS call must be made first.';
+      console.error(`[Sidecar] ${errorMsg}`);
       sendResponse({ success: false, error: errorMsg });
-      return false;
+      return;
     }
 
-    try {
-        switch (message.type) {
-            case START_NEW_CHAT:
-                console.log('[Sidecar Content] Received START_NEW_CHAT request.');
-                provider.startNewChat().then(sendResponse).catch(e => sendResponse({ success: false, error: e.message }));
-                return true;
-            case BROADCAST_PROMPT:
-                console.log('[Sidecar Content] Received BROADCAST_PROMPT request.');
-                provider.broadcast(message.payload.prompt).then(sendResponse).catch(e => sendResponse({ success: false, error: e.message }));
-                return true;
-            case HARVEST_RESPONSE:
-                console.log('[Sidecar Content] Received HARVEST_RESPONSE request.');
-                provider.harvest().then(response => sendResponse(response)).catch(e => sendResponse({ success: false, error: e.message }));
-                return true;
-        }
-    } catch (e) {
-        sendResponse({ success: false, error: e.message });
-        return false;
+    // Handle different message types
+    switch (type) {
+      case START_NEW_CHAT:
+        provider.startNewChat()
+          .then(result => sendResponse({ success: true, result }))
+          .catch(error => {
+            console.error('[Sidecar] Start new chat failed:', error);
+            sendResponse({ success: false, error: error.message });
+          });
+        return true; // async
+
+      case BROADCAST_PROMPT:
+        provider.broadcast(payload.prompt)
+          .then(result => sendResponse({ success: true, result }))
+          .catch(error => {
+            console.error('[Sidecar] Broadcast failed:', error);
+            sendResponse({ success: false, error: error.message });
+          });
+        return true; // async
+
+      case HARVEST_RESPONSE:
+        provider.harvest()
+          .then(result => sendResponse({ success: true, result }))
+          .catch(error => {
+            console.error('[Sidecar] Harvest failed:', error);
+            sendResponse({ success: false, error: error.message });
+          });
+        return true; // async
+
+      default:
+        console.warn('[Sidecar] Unknown message type:', type);
+        sendResponse({ success: false, error: 'Unknown message type' });
     }
   });
-  
-  // Add connection monitoring
-  let connectionHealthy = true;
-  chrome.runtime.onConnect.addListener(() => {
-    connectionHealthy = true;
-  });
-  
-  chrome.runtime.onDisconnect.addListener(() => {
-    connectionHealthy = false;
-    console.warn('[Sidecar] Runtime connection lost');
-  });
+
+  // Connection monitoring
+  chrome.runtime.connect({ name: 'content-script' });
+  console.log('[Sidecar] Content script connected to background.');
 }

@@ -1,4 +1,24 @@
-\# Hybrid Thinking OS
+# Hybrid Thinking OS
+
+A powerful workflow automation system that combines a web-based Control Panel with a browser extension Sidecar to execute multi-step AI workflows on live LLM websites like ChatGPT and Claude.
+
+## 🚀 Features
+
+### Phase 5: Workflow Engine & Memory Management
+
+- **Multi-Step Workflow Execution**: Define and execute complex workflows with multiple prompts
+- **Intelligent Memory Management**: Tiered storage system with hot cache and cold storage
+- **Real-time Workflow Monitoring**: Track workflow progress and status in real-time
+- **Session History**: Browse and analyze past workflow executions
+- **Error Handling & Recovery**: Robust error handling with detailed logging
+- **Tab Management**: Execute workflows on specific browser tabs
+
+### Core Components
+
+- **Control Panel**: React-based web application for workflow management
+- **Sidecar Extension**: Browser extension for executing workflows on LLM websites
+- **Shared Messaging**: Common message types and communication protocols
+- **Memory System**: Dual-tier storage for workflow sessions and results
 
 A system composed of two primary components:
 

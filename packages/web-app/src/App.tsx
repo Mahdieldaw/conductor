@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { sidecarService } from './services/SidecarService';
 import { PromptCanvas } from './components/PromptCanvas';
+import './App.css';
+import { WorkflowRunner } from './components/WorkflowRunner';
+import { MemoryViewer } from './components/MemoryViewer';
 
 // A simple component to get the Extension ID from the developer
 const ExtensionConnector = ({ onConnect, connectionState }) => {
@@ -48,6 +51,7 @@ const ExtensionConnector = ({ onConnect, connectionState }) => {
 export default function App() {
   const [isConnected, setIsConnected] = useState(sidecarService.isReady);
   const [connectionState, setConnectionState] = useState({ status: 'idle', error: null });
+  const [activeTab, setActiveTab] = useState('workflow-runner');
 
   const handleConnect = async (extensionId) => {
     setConnectionState({ status: 'connecting', error: null });
@@ -66,5 +70,33 @@ export default function App() {
   }
   
   // Once connected, render the main application canvas.
-  return <PromptCanvas />;
+  return (
+    <div className="app">
+      <nav className="app-nav">
+          <button 
+            className={activeTab === 'workflow-runner' ? 'active' : ''}
+            onClick={() => setActiveTab('workflow-runner')}
+          >
+            Workflow Runner
+          </button>
+          <button 
+            className={activeTab === 'memory-viewer' ? 'active' : ''}
+            onClick={() => setActiveTab('memory-viewer')}
+          >
+            Memory Viewer
+          </button>
+          <button 
+            className={activeTab === 'prompt-canvas' ? 'active' : ''}
+            onClick={() => setActiveTab('prompt-canvas')}
+          >
+            Prompt Canvas
+          </button>
+        </nav>
+      <main className="app-main">
+          {activeTab === 'workflow-runner' && <WorkflowRunner />}
+          {activeTab === 'memory-viewer' && <MemoryViewer />}
+          {activeTab === 'prompt-canvas' && <PromptCanvas />}
+        </main>
+    </div>
+  );
 }

@@ -13,3 +13,10 @@ export const START_NEW_CHAT = 'START_NEW_CHAT'; // Service Worker to Content Scr
 // New message types for readiness pipeline
 export const CHECK_READINESS = 'CHECK_READINESS'; // UI to Service Worker
 export const ATTEMPT_RECOVERY = 'ATTEMPT_RECOVERY'; // Service Worker to Content Script
+
+// New message types for workflow engine
+export const EXECUTE_WORKFLOW = 'EXECUTE_WORKFLOW';
+export const WORKFLOW_STATUS = 'WORKFLOW_STATUS';
+export const WORKFLOW_RESULT = 'WORKFLOW_RESULT';
+export const GET_HOT_CACHE = 'GET_HOT_CACHE';
+export const GET_FULL_HISTORY = 'GET_FULL_HISTORY';
