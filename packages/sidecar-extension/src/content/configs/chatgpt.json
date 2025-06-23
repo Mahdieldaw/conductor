@@ -1,5 +1,5 @@
 {
-  "platformKey": "chatgpt",
+  "providerKey": "chatgpt",
   "hostnames": ["chat.openai.com", "chatgpt.com"],
   "tabActivation": {
     "enabled": true,
@@ -72,9 +72,25 @@
   "harvestStrategy": {
     "method": "observer",
     "observeTarget": "conversationWrapper",
-    "timeout": 45000,
+    "timeout": 30000,
     "maxAttempts": 8,
     "baseDelay": 1000,
-    "backoffMultiplier": 1.2
+    "backoffMultiplier": 1.5,
+    "stabilizationDelay": 500,
+    "timing": {
+      "elementWaitTimeout": 7000,
+      "broadcastFillTimeout": 7000,
+      "broadcastClickTimeout": 5000,
+      "newChatTimeout": 5000,
+      "newChatStabilizationDelay": 300,
+      "markerCheckAttempts": 25,
+      "markerFoundStabilizationDelay": 1700,
+      "markerCheckInterval": 200,
+      "pollingPhase1Timeout": 25000,
+      "observerDebounceDelay": 1500,
+      "observerFailsafeTimeout": 30000,
+      "scrapeMaxAttempts": 10,
+      "scrapeRetryDelay": 500
+    }
   }
 }

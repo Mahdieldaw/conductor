@@ -1,4 +1,5 @@
 import { findTabByPlatform } from '../../utils/tab-manager.js';
+import { INJECTION_CONFIG } from '../../config/injection-config.js';
 
 let configs = {};
 let configsLoaded = false;
@@ -38,6 +39,60 @@ async function getProviderConfig(providerKey) {
   return config;
 }
 
+/**
+ * Wait for the content script to be loaded and window.hybrid.checkReadiness to be available
+ * @param {number} tabId - The tab ID to check
+ * @returns {Promise<void>}
+ */
+async function waitForContentScript(tabId) {
+    const maxRetries = INJECTION_CONFIG.MAX_RETRIES;
+    const baseTimeout = INJECTION_CONFIG.BASE_TIMEOUT;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            const [result] = await chrome.scripting.executeScript({
+                target: { tabId },
+                func: () => {
+                    // Check if readiness detector is fully initialized
+                    return !!(window.hybrid && window.hybrid.checkReadiness && window.hybrid.isReady);
+                }
+            });
+            
+            if (result && result.result) {
+                console.log(`[Readiness Check] Content script ready on tab ${tabId}`);
+                return; // Content script is loaded and ready
+            }
+        } catch (error) {
+            console.warn(`[Readiness Check] Attempt ${attempt + 1} failed to check content script:`, error.message);
+        }
+        
+        // If content script is not available, try to inject it programmatically
+        if (attempt === 0) {
+            try {
+                console.log(`[Readiness Check] Attempting programmatic injection on tab ${tabId}`);
+                await chrome.scripting.executeScript({
+                    target: { tabId },
+                    files: ['content/readiness-detector.js']
+                });
+                console.log(`[Readiness Check] Programmatic injection completed on tab ${tabId}`);
+                
+                // Give the script a moment to initialize
+                await new Promise(resolve => setTimeout(resolve, 500));
+                continue; // Retry the check immediately
+            } catch (injectionError) {
+                console.warn(`[Readiness Check] Programmatic injection failed:`, injectionError.message);
+            }
+        }
+        
+        // Wait before retrying with exponential backoff
+        const waitTime = baseTimeout * Math.pow(2, attempt);
+        console.log(`[Readiness Check] Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    throw new Error(`Content script not available after ${maxRetries} attempts. The readiness detector may have failed to load.`);
+}
+
 export async function check({ providerKey }) {
     console.log(`[Readiness] Checking readiness for provider: ${providerKey}`);
     const config = await getProviderConfig(providerKey);
@@ -51,8 +106,11 @@ export async function check({ providerKey }) {
         return { status: 'TAB_NOT_OPEN', message: `${config.name || providerKey} tab not found.`, data: { url: config.url } };
     }
 
-    // 2. Directly execute the readiness function that our `readiness-detector.js` has placed on the window.
+    // 2. Wait for content script to load, then execute the readiness function
     try {
+        // First, ensure the content script is loaded and window.hybrid.checkReadiness exists
+        await waitForContentScript(tab.tabId);
+        
         const [result] = await chrome.scripting.executeScript({
             target: { tabId: tab.tabId },
             // This function runs in the context of the content script

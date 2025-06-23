@@ -3,14 +3,15 @@ import './WorkflowRunner.css';
 
 interface WorkflowStep {
   id: string;
+  type: 'prompt';
   prompt: string;
-  provider: 'chatgpt' | 'claude';
+  providerKey: 'chatgpt' | 'claude';
   expectedOutput?: string;
   timeout?: number;
 }
 
 interface SynthesisStep {
-  provider: 'chatgpt' | 'claude';
+  providerKey: 'chatgpt' | 'claude';
   prompt: string;
   enabled: boolean;
 }
@@ -35,7 +36,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
 }) => {
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
   const [synthesisStep, setSynthesisStep] = useState<SynthesisStep>({
-    provider: 'chatgpt',
+    providerKey: 'chatgpt',
     prompt: 'Please synthesize the following responses into a comprehensive answer:\n\n{{outputs}}',
     enabled: false
   });
@@ -43,7 +44,8 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
   const addStep = () => {
     const newStep: WorkflowStep = {
       id: `step-${Date.now()}`,
-      provider: 'chatgpt',
+      type: 'prompt',
+      providerKey: 'chatgpt',
       prompt: '',
       timeout: 30000
     };
@@ -53,21 +55,23 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
   const setupMultiProviderWorkflow = () => {
     const claudeStep: WorkflowStep = {
       id: 'claude_step',
-      provider: 'claude',
+      type: 'prompt',
+      providerKey: 'claude',
       prompt: 'Enter your prompt here - this will be sent to Claude',
       timeout: 30000
     };
     
     const chatgptStep: WorkflowStep = {
       id: 'chatgpt_step',
-      provider: 'chatgpt',
+      type: 'prompt',
+      providerKey: 'chatgpt',
       prompt: 'Enter your prompt here - this will be sent to ChatGPT',
       timeout: 30000
     };
     
     setWorkflowSteps([claudeStep, chatgptStep]);
     setSynthesisStep({
-      provider: 'chatgpt',
+      providerKey: 'chatgpt',
       prompt: 'I have received responses from both Claude and ChatGPT for the same prompt. Please synthesize these responses into a single, comprehensive answer that combines the best insights from both:\n\nClaude\'s response: {{outputs.claude_step}}\n\nChatGPT\'s response: {{outputs.chatgpt_step}}\n\nPlease provide a synthesized response that:',
       enabled: true
     });
@@ -134,8 +138,8 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
               <label>
                 Provider:
                 <select
-                  value={step.provider}
-                  onChange={(e) => updateStep(index, 'provider', e.target.value as 'chatgpt' | 'claude')}
+                  value={step.providerKey}
+                  onChange={(e) => updateStep(index, 'providerKey', e.target.value as 'chatgpt' | 'claude')}
                   disabled={executionState.isRunning}
                 >
                   <option value="chatgpt">ChatGPT</option>
@@ -203,8 +207,8 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
               <label>
                 Synthesis Provider:
                 <select
-                  value={synthesisStep.provider}
-                  onChange={(e) => setSynthesisStep(prev => ({ ...prev, provider: e.target.value as 'chatgpt' | 'claude' }))}
+                  value={synthesisStep.providerKey}
+                  onChange={(e) => setSynthesisStep(prev => ({ ...prev, providerKey: e.target.value as 'chatgpt' | 'claude' }))}
                   disabled={executionState.isRunning}
                 >
                   <option value="chatgpt">ChatGPT</option>

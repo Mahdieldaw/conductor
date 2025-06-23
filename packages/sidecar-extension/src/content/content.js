@@ -20,6 +20,12 @@ import { Provider } from './provider.js';
       return;
     }
     
+    // Handle PING messages for tab readiness checks
+    if (type === 'PING') {
+      sendResponse({ success: true, timestamp: Date.now() });
+      return;
+    }
+    
     // The CHECK_READINESS action is special: it creates the provider instance.
     if (type === 'CHECK_READINESS') {
       try {

@@ -48,6 +48,10 @@ const router = createMessageRouter({
     metricsMiddleware, 
     createMiddleware(validationMiddleware, {
       schemas: {
+        [PING]: {
+          required: false,
+          properties: {}
+        },
         [EXECUTE_WORKFLOW]: {
           required: true,
           properties: {
@@ -60,14 +64,28 @@ const router = createMessageRouter({
         [BROADCAST_PROMPT]: {
           required: true,
           properties: {
-            platform: { type: 'string', required: true },
+            providerKey: { type: 'string', required: true },
             prompt: { type: 'string', required: true }
           }
         },
         [HARVEST_RESPONSE]: {
           required: true,
           properties: {
-            platform: { type: 'string', required: true }
+            payload: {
+              type: 'object',
+              required: true,
+              properties: {
+                providerKey: { type: 'string', required: true }
+              }
+            }
+          }
+        },
+        [EXECUTE_PROMPT]: {
+          required: true,
+          properties: {
+            providerKey: { type: 'string', required: true },
+            prompt: { type: 'string', required: true },
+            options: { type: 'object', required: false }
           }
         }
       },

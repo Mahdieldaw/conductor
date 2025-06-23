@@ -87,51 +87,51 @@ class SidecarService {
   /**
    * Resets the session for a given provider, which forces a new chat on the provider UI
    * and generates a new session ID in the extension's backend.
-   * @param {string} platform - The key for the target platform (e.g., 'chatgpt').
+   * @param {string} providerKey - The key for the target provider (e.g., 'chatgpt').
    * @returns {Promise<{newSessionId: string}>} The new session ID.
    */
-  async resetSession(platform) {
+  async resetSession(providerKey) {
     return this.#sendMessage({
       type: RESET_SESSION,
-      payload: { platform },
+      payload: { providerKey },
     });
   }
 
   /**
    * Executes the full "send and wait for response" flow on a specific platform.
-   * @param {string} platform - The key for the target platform (e.g., 'chatgpt').
+   * @param {string} providerKey - The key for the target provider (e.g., 'chatgpt').
    * @param {string} prompt - The prompt text to send.
    * @returns {Promise<string>} The harvested response from the LLM.
    */
-  async executePrompt(platform, prompt) {
+  async executePrompt(providerKey, prompt) {
     return this.#sendMessage({
       type: EXECUTE_PROMPT,
-      payload: { platform, prompt },
+      payload: { providerKey, prompt },
     });
   }
 
   /**
    * Only sends the prompt to the LLM page without waiting for a response.
-   * @param {string} platform - The key for the target platform (e.g., 'chatgpt').
+   * @param {string} providerKey - The key for the target provider (e.g., 'chatgpt').
    * @param {string} prompt - The prompt text to send.
    * @returns {Promise<string>} A confirmation message.
    */
-  async sendPromptOnly(platform, prompt) {
+  async sendPromptOnly(providerKey, prompt) {
     return this.#sendMessage({
         type: BROADCAST_PROMPT,
-        payload: { platform, prompt }
+        payload: { providerKey, prompt }
     });
   }
   
   /**
    * Only harvests the most recent response from an LLM page.
-   * @param {string} platform - The key for the target platform (e.g., 'chatgpt').
+   * @param {string} providerKey - The key for the target provider (e.g., 'chatgpt').
    * @returns {Promise<string>} The harvested response text.
    */
-  async harvestResponse(platform) {
+  async harvestResponse(providerKey) {
       return this.#sendMessage({
           type: HARVEST_RESPONSE,
-          payload: { platform }
+          payload: { providerKey }
       });
   }
 
@@ -152,34 +152,41 @@ class SidecarService {
     // Generate a unique workflow ID if not provided
     const workflowId = workflow.workflowId || `wf-${Date.now()}`;
     
-    return this.#sendMessage({
-      type: EXECUTE_WORKFLOW,
-      workflowId,
-      steps: workflow.steps,
-      synthesis: workflow.synthesis,
-      options: workflow.options || {}
-    });
+    return this.#sendMessage({ 
+        type: EXECUTE_WORKFLOW, 
+        payload: { 
+          workflowId, 
+          steps: workflow.steps, 
+          synthesis: workflow.synthesis, 
+          options: workflow.options || {} 
+        } 
+      });
   }
 
-  async getWorkflowStatus(sessionId) {
-    return this.#sendMessage({
-      type: WORKFLOW_STATUS,
-      sessionId
-    });
+  async getWorkflowStatus(sessionId) { 
+      return this.#sendMessage({ 
+        type: WORKFLOW_STATUS, 
+        payload: { 
+          sessionId 
+        } 
+      });
   }
 
-  async getWorkflowResult(sessionId) {
-    return this.#sendMessage({
-      type: WORKFLOW_RESULT,
-      sessionId
-    });
+  async getWorkflowResult(sessionId) { 
+      return this.#sendMessage({ 
+        type: WORKFLOW_RESULT, 
+        payload: { 
+          sessionId 
+        } 
+      });
   }
 
   // Memory methods
-  async getHotCache() {
-    return this.#sendMessage({
-      type: GET_HOT_CACHE
-    });
+  async getHotCache() { 
+      return this.#sendMessage({ 
+        type: GET_HOT_CACHE, 
+        payload: {} // Ensure payload exists even if empty 
+      });
   }
 
   async getCompleteHotCache() {
@@ -199,11 +206,13 @@ class SidecarService {
     }
   }
 
-  async getFullHistory(options = {}) {
-    return this.#sendMessage({
-      type: GET_FULL_HISTORY,
-      options
-    });
+  async getFullHistory(options = {}) { 
+      return this.#sendMessage({ 
+        type: GET_FULL_HISTORY, 
+        payload: { 
+          ...options 
+        } 
+      });
   }
 
   // Message listener methods for real-time updates

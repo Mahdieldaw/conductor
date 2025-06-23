@@ -48,11 +48,13 @@ export function createMessageRouter(handlers, options = {}) {
       }
 
       // Send successful response
-      sendResponse({ 
+      const response = { 
         success: true, 
         data: result,
         requestId: context.requestId
-      });
+      };
+      console.log(`[Router] Sending successful response for ${message.type}:`, response);
+      sendResponse(response);
 
     } catch (error) {
       console.error(`[Router] Error processing message ${message.type}:`, error);

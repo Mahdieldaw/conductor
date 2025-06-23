@@ -66,8 +66,8 @@ export const RecentActivitySidebar: React.FC<RecentActivitySidebarProps> = ({
             No recent prompts
           </p>
         ) : (
-          Object.entries(activity.recentPromptOutputs).map(([provider, outputs]) => (
-            <div key={provider} style={{ marginBottom: '1rem' }}>
+          Object.entries(activity.recentPromptOutputs).map(([providerKey, outputs]) => (
+            <div key={providerKey} style={{ marginBottom: '1rem' }}>
               <h5 style={{ 
                 color: '#d1d5db', 
                 fontSize: '0.9rem', 
@@ -75,7 +75,7 @@ export const RecentActivitySidebar: React.FC<RecentActivitySidebarProps> = ({
                 marginBottom: '0.5rem',
                 textTransform: 'capitalize'
               }}>
-                {provider}
+                {providerKey}
               </h5>
               
               {outputs.length === 0 ? (

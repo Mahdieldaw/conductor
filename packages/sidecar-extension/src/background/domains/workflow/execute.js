@@ -20,7 +20,10 @@ const activeWorkflows = new Map(); // Track running workflows
  * @param {Object} context - Request context
  * @returns {Promise<Object>} Workflow execution result
  */
-export async function execute(payload, context) {
+export async function execute(message, context) {
+  // Handle nested payload structure from SidecarService
+  const payload = message.payload || message;
+  
   // Validate payload structure before destructuring
   if (!payload || typeof payload !== 'object') {
     throw new Error('Execute workflow failed: payload is required and must be an object');
@@ -35,6 +38,9 @@ export async function execute(payload, context) {
   }
   
   const { workflowId, steps, synthesis, options = {} } = payload;
+  
+  // Validate workflow steps before execution
+  validateWorkflowSteps(steps);
   const sessionId = crypto.randomUUID();
   
   console.log(`[Workflow] Starting execution of workflow ${workflowId} with session ${sessionId}`);
@@ -68,7 +74,7 @@ export async function execute(payload, context) {
     // Save initial session state
     await memoryManager.saveSession(sessionRecord);
     
-    // Execute workflow steps
+    // Execute workflow steps with enhanced error handling
     const result = await executeWorkflowSteps(workflow, sessionRecord);
     
     // Update final session state
@@ -77,7 +83,9 @@ export async function execute(payload, context) {
     sessionRecord.result = result;
     
     await memoryManager.saveSession(sessionRecord);
-    activeWorkflows.delete(sessionId);
+    
+    // Clean up workflow with delay
+    cleanupWorkflow(sessionId, 'completed');
     
     return {
       sessionId,
@@ -95,7 +103,9 @@ export async function execute(payload, context) {
       sessionRecord.error = error.message;
       sessionRecord.endTime = Date.now();
       await memoryManager.saveSession(sessionRecord);
-      activeWorkflows.delete(sessionId);
+      
+      // Clean up failed workflow with delay
+      cleanupWorkflow(sessionId, 'failed');
     }
     
     throw error;
@@ -165,14 +175,14 @@ async function executeWorkflowSteps(workflow, sessionRecord) {
       // Use the prompt directly from the step (no template processing for now)
       const prompt = step.prompt || '';
       
-      // Execute the step
+      // Execute the step (now includes intelligent broadcast/harvest retry logic)
       const stepResult = await executeStep(step, prompt, sessionRecord);
       
       // Store step result
       stepResults[step.id] = { result: stepResult };
       sessionRecord.steps.push({
         stepId: step.id,
-        platform: step.platform,
+        providerKey: step.providerKey,
         prompt,
         result: stepResult,
         timestamp: Date.now()
@@ -194,17 +204,40 @@ async function executeWorkflowSteps(workflow, sessionRecord) {
  * Execute a single workflow step
  */
 async function executeStep(step, prompt, sessionRecord) {
-  if (step.type === 'prompt') {
-    // Use the existing prompt domain to execute the step
-    const result = await promptDomain.execute({
-      platform: step.platform,
-      prompt
-    }, { requestId: `${sessionRecord.sessionId}-${step.id}` });
-    
-    return result;
+  if (step.type !== 'prompt') {
+    throw new Error(`Unknown step type: ${step.type}`);
   }
-  
-  throw new Error(`Unknown step type: ${step.type}`);
+
+  // Phase 1: Broadcast the prompt. This should only happen once.
+  console.log(`[Workflow] Broadcasting prompt for step ${step.id} to ${step.providerKey}`);
+  await promptDomain.broadcast({
+    providerKey: step.providerKey,
+    prompt
+  }, { requestId: `${sessionRecord.sessionId}-${step.id}-broadcast` });
+
+  // Phase 2: Harvest the result with its own retry logic.
+  const maxRetries = 3;
+  const retryDelay = 2000; // 2 seconds
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Workflow] Harvesting result for step ${step.id} (attempt ${attempt}/${maxRetries})`);
+      const result = await promptDomain.harvest({
+        providerKey: step.providerKey,
+      }, { requestId: `${sessionRecord.sessionId}-${step.id}-harvest-${attempt}` });
+      return result; // Success!
+    } catch (error) {
+      lastError = error;
+      console.warn(`[Workflow] Harvest failed for step ${step.id} on attempt ${attempt}:`, error.message);
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+      }
+    }
+  }
+
+  // If all harvest attempts fail, throw the last error.
+  throw new Error(`Step ${step.id} failed to harvest a response after ${maxRetries} attempts. Last error: ${lastError.message}`);
 }
 
 /**
@@ -220,6 +253,45 @@ function processTemplate(template, variables) {
   }
   
   return processed;
+}
+
+/**
+ * Validate workflow steps before execution
+ */
+function validateWorkflowSteps(steps) {
+  for (const step of steps) {
+    if (!step.type) {
+      throw new Error(`Step ${step.id || 'unknown'} missing required 'type' property`);
+    }
+    if (!['prompt'].includes(step.type)) {
+      throw new Error(`Step ${step.id || 'unknown'} has unsupported type: ${step.type}`);
+    }
+    if (step.type === 'prompt' && !step.providerKey) {
+      throw new Error(`Prompt step ${step.id || 'unknown'} missing required 'providerKey' property`);
+    }
+    if (step.type === 'prompt' && !step.prompt) {
+      throw new Error(`Prompt step ${step.id || 'unknown'} missing required 'prompt' property`);
+    }
+  }
+}
+
+
+
+/**
+ * Clean up completed workflow from memory
+ */
+function cleanupWorkflow(sessionId, status = 'completed') {
+  const workflow = activeWorkflows.get(sessionId);
+  if (workflow) {
+    workflow.status = status;
+    workflow.endTime = Date.now();
+    
+    // Remove from active workflows after delay to allow status queries
+    setTimeout(() => {
+      activeWorkflows.delete(sessionId);
+      console.log(`[Workflow] Cleaned up workflow session: ${sessionId}`);
+    }, 5 * 60 * 1000); // 5 minutes
+  }
 }
 
 /**

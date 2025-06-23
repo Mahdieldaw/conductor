@@ -80,4 +80,16 @@
   };
 
   console.log('[Readiness Detector] Initialized successfully');
+  
+  // Signal that the readiness detector is fully loaded and ready
+  window.hybrid.isReady = true;
+  
+  // Dispatch a custom event to signal readiness
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      window.dispatchEvent(new CustomEvent('hybridReadinessDetectorReady'));
+    });
+  } else {
+    window.dispatchEvent(new CustomEvent('hybridReadinessDetectorReady'));
+  }
 })();

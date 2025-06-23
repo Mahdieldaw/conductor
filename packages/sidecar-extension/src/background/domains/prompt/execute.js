@@ -1,6 +1,6 @@
 import broadcast from './broadcast.js';
 import harvest from './harvest.js';
-import { findTabByPlatform } from '../../utils/tab-manager.js';
+import { findReadyTabByProviderKey } from '../../utils/tab-manager.js';
 import { CHECK_READINESS } from '@hybrid-thinking/messaging';
 import { sendMessage } from '../../utils/message-sender.js';
 
@@ -38,19 +38,19 @@ async function getProviderConfig(platformKey) {
 /**
  * Orchestrates the full prompt execution workflow: ensuring provider readiness, broadcasting the prompt and then harvesting the response.
  * @param {object} payload - The message payload.
- * @param {string} payload.platform - The platform key (e.g., 'chatgpt', 'claude').
+ * @param {string} payload.providerKey - The provider key (e.g., 'chatgpt', 'claude').
  * @param {string} payload.prompt - The prompt text to execute.
  * @param {string} [payload.sessionId] - An optional session ID.
  * @returns {Promise<string>} A promise that resolves with the harvested response or rejects with an error.
  */
-export default async function execute({ platform, prompt, sessionId }) {
-  const targetTab = await findTabByPlatform(platform);
-  if (!targetTab) throw new Error(`No active tab for platform: ${platform}`);
+export default async function execute({ providerKey, prompt, sessionId }) {
+  const targetTab = await findReadyTabByProviderKey(providerKey);
+  if (!targetTab) throw new Error(`No ready tab found for platform: ${providerKey}. Please ensure the platform is open and responsive.`);
 
   // Load provider configuration
-  const config = await getProviderConfig(platform);
+  const config = await getProviderConfig(providerKey);
   if (!config) {
-    throw new Error(`No configuration found for platform: ${platform}`);
+    throw new Error(`No configuration found for platform: ${providerKey}`);
   }
 
   // Ensure provider is initialized by sending a readiness check
@@ -63,6 +63,6 @@ export default async function execute({ platform, prompt, sessionId }) {
     timeout: 5000
   });
 
-  await broadcast({ platform, prompt, tabId: targetTab.tabId });
-  return await harvest({ platform, tabId: targetTab.tabId });
+  await broadcast({ providerKey, prompt, tabId: targetTab.tabId });
+  return await harvest({ providerKey, tabId: targetTab.tabId });
 }

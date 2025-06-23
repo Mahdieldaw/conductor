@@ -120,24 +120,29 @@ export async function metricsMiddleware(context, next, config = {}) {
  * Validation middleware - Validates message structure and payload
  * @param {Object} context - Request context
  * @param {Function} next - Next function in the chain
- * @param {Object} config - Middleware configuration
+ * @param {Object} config - Middleware configuration containing schemas
  * @returns {*} Result from next middleware/handler
  */
 export async function validationMiddleware(context, next, config = {}) {
-  const { schemas = {}, strictMode = false } = config;
-  
-  // Basic message structure validation
-  if (!context.message || typeof context.message !== 'object') {
-    throw new Error('Invalid message: must be an object');
-  }
-  
-  if (!context.message.type || typeof context.message.type !== 'string') {
-    throw new Error('Invalid message: type must be a non-empty string');
-  }
-  
-  // Schema-based validation if schemas are provided
+  const { schemas = {} } = config;
   const schema = schemas[context.message.type];
-  if (schema) {
+    
+    if (!schema) {
+      console.log(`[Middleware:Validation] No schema found for message type: ${context.message.type}`);
+      return await next();
+    }
+
+    // Skip validation for PING messages or messages with required: false
+    if (context.message.type === 'PING' || schema.required === false) {
+      console.log(`[Middleware:Validation] Skipping validation for ${context.message.type} (not required)`);
+      return await next();
+    }
+
+    // Debug: Log the actual message structure
+    console.log(`[Middleware:Validation] Debug - Full message:`, JSON.stringify(context.message, null, 2));
+    console.log(`[Middleware:Validation] Debug - Message keys:`, Object.keys(context.message));
+    console.log(`[Middleware:Validation] Debug - Has payload:`, 'payload' in context.message);
+
     try {
       // In a real implementation, you would use a proper schema validation library
       // For now, we'll do basic validation
@@ -145,15 +150,14 @@ export async function validationMiddleware(context, next, config = {}) {
     } catch (validationError) {
       throw new Error(`Validation failed for ${context.message.type}: ${validationError.message}`);
     }
-  }
-  
-  console.log(`[Middleware:Validation] Message validated:`, {
-    requestId: context.requestId,
-    messageType: context.message.type,
-    hasSchema: !!schema
-  });
-  
-  return await next();
+    
+    console.log(`[Middleware:Validation] Message validated:`, {
+      requestId: context.requestId,
+      messageType: context.message.type,
+      hasSchema: !!schema
+    });
+    
+    return await next();
 }
 
 /**
@@ -180,6 +184,15 @@ function validatePayloadStructure(payload, schema) {
         if (propSchema.type === 'array') {
           if (!Array.isArray(value)) {
             throw new Error(`Property '${key}' must be an array, got ${actualType}`);
+          }
+        } else if (propSchema.type === 'object') {
+          if (actualType !== 'object' || value === null) {
+            throw new Error(`Property '${key}' must be an object, got ${actualType}`);
+          }
+          
+          // Recursively validate nested object properties
+          if (propSchema.properties) {
+            validatePayloadStructure(value, propSchema);
           }
         } else if (actualType !== propSchema.type) {
           throw new Error(`Property '${key}' must be of type ${propSchema.type}, got ${actualType}`);

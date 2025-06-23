@@ -1,13 +1,13 @@
 import { tabManager } from '../../utils/tab-manager.js';
 import { sendMessage } from '../../utils/message-sender.js';
 
-export default async function broadcast({ platform, prompt, tabId }) {
+export default async function broadcast({ providerKey, prompt, tabId }) {
   let targetTabId = tabId;
 
   if (!targetTabId) {
-    const targetTab = await tabManager.findTabByPlatform(platform);
+    const targetTab = await tabManager.findTabByProviderKey(providerKey);
     if (!targetTab) {
-      throw new Error(`Broadcast failed: No tab for platform ${platform}.`);
+      throw new Error(`Broadcast failed: No tab for provider ${providerKey}.`);
     }
     targetTabId = targetTab.tabId;
   }
