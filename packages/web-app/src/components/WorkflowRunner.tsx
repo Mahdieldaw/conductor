@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { sidecarService } from '../services/SidecarService';
+import React, { useState } from 'react';
 import './WorkflowRunner.css';
 
 interface WorkflowStep {
@@ -16,14 +15,23 @@ interface SynthesisStep {
   enabled: boolean;
 }
 
+interface WorkflowExecutionState {
+  isRunning: boolean;
+  currentStep: number;
+  error: string | null;
+  sessionId: string | null;
+}
+
 interface WorkflowRunnerProps {
-  onWorkflowComplete?: (result: any) => void;
-  onWorkflowError?: (error: any) => void;
+  executionState: WorkflowExecutionState;
+  onRunWorkflow: (workflow: { steps: WorkflowStep[], synthesis: SynthesisStep }) => void;
+  onStopWorkflow: () => void;
 }
 
 export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
-  onWorkflowComplete,
-  onWorkflowError
+  executionState,
+  onRunWorkflow,
+  onStopWorkflow
 }) => {
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
   const [synthesisStep, setSynthesisStep] = useState<SynthesisStep>({
@@ -31,12 +39,6 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
     prompt: 'Please synthesize the following responses into a comprehensive answer:\n\n{{outputs}}',
     enabled: false
   });
-  const [currentStep, setCurrentStep] = useState<number>(-1);
-  const [isRunning, setIsRunning] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  // Tab management removed - providers are now selected per step
 
   const addStep = () => {
     const newStep: WorkflowStep = {
@@ -82,87 +84,21 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
     setWorkflowSteps(updatedSteps);
   };
 
-  const executeWorkflow = async () => {
-    if (!selectedTabId || workflowSteps.length === 0) {
-      setError('Please select a tab and add at least one step');
+  const executeWorkflow = () => {
+    if (workflowSteps.length === 0) {
       return;
     }
-
-    setIsRunning(true);
-    setError(null);
-    setResults([]);
-    setCurrentStep(0);
-
-    try {
-      const workflowId = `workflow-${Date.now()}`;
-      
-      // Prepare workflow data with synthesis step if enabled
-      const workflowData = {
-        id: workflowId,
-        steps: workflowSteps,
-        ...(synthesisStep.enabled && {
-          synthesis: {
-            provider: synthesisStep.provider,
-            prompt: synthesisStep.prompt
-          }
-        })
-      };
-      
-      const response = await sidecarService.executeWorkflow(
-        workflowId,
-        workflowData,
-        null, // No specific tab needed since providers are selected per step
-        { timeout: 60000 }
-      );
-
-      setSessionId(response.sessionId);
-      
-      // Poll for status updates
-      pollWorkflowStatus(response.sessionId);
-    } catch (err: any) {
-      setError(err.message || 'Failed to execute workflow');
-      setIsRunning(false);
-      onWorkflowError?.(err);
-    }
+    
+    // Create the workflow object structure expected by the parent component
+    const workflow = {
+      steps: workflowSteps,
+      synthesis: synthesisStep
+    };
+    
+    onRunWorkflow(workflow);
   };
 
-  const pollWorkflowStatus = async (sessionId: string) => {
-    const pollInterval = setInterval(async () => {
-      try {
-        const status = await sidecarService.getWorkflowStatus(sessionId);
-        
-        if (status.currentStep !== undefined) {
-          setCurrentStep(status.currentStep);
-        }
 
-        if (status.status === 'completed') {
-          clearInterval(pollInterval);
-          const result = await sidecarService.getWorkflowResult(sessionId);
-          setResults(result.stepResults || []);
-          setIsRunning(false);
-          setCurrentStep(-1);
-          onWorkflowComplete?.(result);
-        } else if (status.status === 'failed') {
-          clearInterval(pollInterval);
-          setError(status.error || 'Workflow failed');
-          setIsRunning(false);
-          setCurrentStep(-1);
-          onWorkflowError?.(status.error);
-        }
-      } catch (err) {
-        console.error('Failed to poll workflow status:', err);
-      }
-    }, 1000);
-
-    // Stop polling after 5 minutes
-    setTimeout(() => clearInterval(pollInterval), 300000);
-  };
-
-  const stopWorkflow = () => {
-    setIsRunning(false);
-    setCurrentStep(-1);
-    setError('Workflow stopped by user');
-  };
 
   return (
     <div className="workflow-runner">
@@ -175,7 +111,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
         {workflowSteps.map((step, index) => (
           <div 
             key={step.id} 
-            className={`step ${currentStep === index ? 'active' : ''} ${index < currentStep ? 'completed' : ''}`}
+            className={`step ${executionState.currentStep === index ? 'active' : ''} ${index < executionState.currentStep ? 'completed' : ''}`}
           >
             <div className="step-header">
               <span className="step-number">{index + 1}</span>
@@ -184,11 +120,11 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
                 placeholder="Step description (optional)"
                 value={step.id}
                 onChange={(e) => updateStep(index, 'id', e.target.value)}
-                disabled={isRunning}
+                disabled={executionState.isRunning}
               />
               <button 
                 onClick={() => removeStep(index)}
-                disabled={isRunning}
+                disabled={executionState.isRunning}
                 className="remove-step"
               >
                 ×
@@ -200,7 +136,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
                 <select
                   value={step.provider}
                   onChange={(e) => updateStep(index, 'provider', e.target.value as 'chatgpt' | 'claude')}
-                  disabled={isRunning}
+                  disabled={executionState.isRunning}
                 >
                   <option value="chatgpt">ChatGPT</option>
                   <option value="claude">Claude</option>
@@ -212,7 +148,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
                   type="number"
                   value={step.timeout || 30000}
                   onChange={(e) => updateStep(index, 'timeout', Number(e.target.value))}
-                  disabled={isRunning}
+                  disabled={executionState.isRunning}
                   min={1000}
                   max={300000}
                 />
@@ -222,7 +158,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
               placeholder="Enter the prompt for this step..."
               value={step.prompt}
               onChange={(e) => updateStep(index, 'prompt', e.target.value)}
-              disabled={isRunning}
+              disabled={executionState.isRunning}
               rows={3}
             />
           </div>
@@ -231,7 +167,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
         <div className="step-controls">
           <button 
             onClick={addStep}
-            disabled={isRunning}
+            disabled={executionState.isRunning}
             className="add-step"
           >
             + Add Step
@@ -239,7 +175,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
           
           <button 
             onClick={setupMultiProviderWorkflow}
-            disabled={isRunning}
+            disabled={executionState.isRunning}
             className="setup-multi-provider"
           >
             🚀 Quick Setup: Multi-Provider Synthesis
@@ -255,7 +191,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
               type="checkbox"
               checked={synthesisStep.enabled}
               onChange={(e) => setSynthesisStep(prev => ({ ...prev, enabled: e.target.checked }))}
-              disabled={isRunning}
+              disabled={executionState.isRunning}
             />
             Enable synthesis step to combine outputs from multiple providers
           </label>
@@ -269,7 +205,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
                 <select
                   value={synthesisStep.provider}
                   onChange={(e) => setSynthesisStep(prev => ({ ...prev, provider: e.target.value as 'chatgpt' | 'claude' }))}
-                  disabled={isRunning}
+                  disabled={executionState.isRunning}
                 >
                   <option value="chatgpt">ChatGPT</option>
                   <option value="claude">Claude</option>
@@ -280,7 +216,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
               placeholder="Enter the synthesis prompt... Use {{outputs}} to reference all step outputs."
               value={synthesisStep.prompt}
               onChange={(e) => setSynthesisStep(prev => ({ ...prev, prompt: e.target.value }))}
-              disabled={isRunning}
+              disabled={executionState.isRunning}
               rows={4}
             />
           </div>
@@ -288,7 +224,7 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
       </div>
 
       <div className="workflow-controls">
-        {!isRunning ? (
+        {!executionState.isRunning ? (
           <button 
             onClick={executeWorkflow}
             disabled={workflowSteps.length === 0}
@@ -297,38 +233,24 @@ export const WorkflowRunner: React.FC<WorkflowRunnerProps> = ({
             Execute Workflow
           </button>
         ) : (
-          <button onClick={stopWorkflow} className="stop-btn">
+          <button onClick={onStopWorkflow} className="stop-btn">
             Stop Workflow
           </button>
         )}
       </div>
 
-      {error && (
+      {executionState.error && (
         <div className="error-message">
-          <strong>Error:</strong> {error}
+          <strong>Error:</strong> {executionState.error}
         </div>
       )}
 
-      {isRunning && (
+      {executionState.isRunning && (
         <div className="workflow-status">
           <div className="status-indicator">
             <div className="spinner"></div>
-            <span>Running step {currentStep + 1} of {workflowSteps.length}...</span>
+            <span>Running step {executionState.currentStep + 1} of {workflowSteps.length}...</span>
           </div>
-        </div>
-      )}
-
-      {results.length > 0 && (
-        <div className="workflow-results">
-          <h3>Results</h3>
-          {results.map((result, index) => (
-            <div key={index} className="result-item">
-              <h4>Step {index + 1}: {workflowSteps[index]?.id || `Step ${index + 1}`}</h4>
-              <div className="result-content">
-                {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
-              </div>
-            </div>
-          ))}
         </div>
       )}
     </div>

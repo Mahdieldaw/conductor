@@ -7,12 +7,15 @@
  */
 
 const HOT_CACHE_KEY = 'workflow_hot_cache';
+const PROMPT_CACHE_KEY = 'prompt_hot_cache';
 const COLD_STORAGE_PREFIX = 'workflow_session_';
 const MAX_HOT_CACHE_SIZE = 10;
+const MAX_PROMPT_CACHE_SIZE = 10;
 
 export class MemoryManager {
   constructor() {
     this.hotCacheInitialized = false;
+    this.promptCacheInitialized = false;
   }
 
   /**
@@ -29,6 +32,24 @@ export class MemoryManager {
       this.hotCacheInitialized = true;
     } catch (error) {
       console.error('[MemoryManager] Failed to initialize hot cache:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Initialize prompt cache if not already done
+   */
+  async #ensurePromptCacheInitialized() {
+    if (this.promptCacheInitialized) return;
+    
+    try {
+      const result = await chrome.storage.session.get(PROMPT_CACHE_KEY);
+      if (!result[PROMPT_CACHE_KEY]) {
+        await chrome.storage.session.set({ [PROMPT_CACHE_KEY]: {} });
+      }
+      this.promptCacheInitialized = true;
+    } catch (error) {
+      console.error('[MemoryManager] Failed to initialize prompt cache:', error);
       throw error;
     }
   }
@@ -216,6 +237,90 @@ export class MemoryManager {
   }
 
   /**
+   * Save a single prompt-response pair to the cache, organized by provider
+   * @param {string} providerKey - The key for the provider (e.g., 'chatgpt')
+   * @param {string} prompt - The user's prompt text
+   * @param {string} response - The AI's response text
+   */
+  async savePromptOutput(providerKey, prompt, response) {
+    console.log(`[MemoryManager] Saving prompt output for ${providerKey}`);
+    
+    try {
+      await this.#ensurePromptCacheInitialized();
+      
+      const promptCache = await this.getPromptCache();
+      
+      if (!promptCache[providerKey]) {
+        promptCache[providerKey] = [];
+      }
+      
+      const newOutput = {
+        id: crypto.randomUUID(),
+        prompt: prompt,
+        response: response,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Add to front (most recent)
+      promptCache[providerKey].unshift(newOutput);
+      
+      // Trim to max size
+      if (promptCache[providerKey].length > MAX_PROMPT_CACHE_SIZE) {
+        promptCache[providerKey].splice(MAX_PROMPT_CACHE_SIZE);
+      }
+      
+      await chrome.storage.session.set({ [PROMPT_CACHE_KEY]: promptCache });
+      console.log(`[MemoryManager] Saved new prompt output for ${providerKey} to hot cache.`);
+      
+    } catch (error) {
+      console.error(`[MemoryManager] Failed to save prompt output for ${providerKey}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the prompt cache (recent prompt-response pairs by provider)
+   * @returns {Promise<Object>} Object with provider keys and arrays of prompt outputs
+   */
+  async getPromptCache() {
+    try {
+      await this.#ensurePromptCacheInitialized();
+      
+      const result = await chrome.storage.session.get(PROMPT_CACHE_KEY);
+      return result[PROMPT_CACHE_KEY] || {};
+      
+    } catch (error) {
+      console.error('[MemoryManager] Failed to get prompt cache:', error);
+      return {};
+    }
+  }
+
+  /**
+   * Get the complete hot cache including both workflows and prompts
+   * @returns {Promise<Object>} Object with recentWorkflows and recentPromptOutputs
+   */
+  async getCompleteHotCache() {
+    try {
+      const [workflows, prompts] = await Promise.all([
+        this.getHotCache(),
+        this.getPromptCache()
+      ]);
+      
+      return {
+        recentWorkflows: workflows,
+        recentPromptOutputs: prompts
+      };
+      
+    } catch (error) {
+      console.error('[MemoryManager] Failed to get complete hot cache:', error);
+      return {
+        recentWorkflows: [],
+        recentPromptOutputs: {}
+      };
+    }
+  }
+
+  /**
    * Get storage usage statistics
    * @returns {Promise<Object>} Storage usage information
    */
@@ -227,6 +332,7 @@ export class MemoryManager {
       ]);
       
       const hotCache = await this.getHotCache();
+      const promptCache = await this.getPromptCache();
       const allLocalKeys = await chrome.storage.local.get(null);
       const sessionCount = Object.keys(allLocalKeys)
         .filter(key => key.startsWith(COLD_STORAGE_PREFIX)).length;
@@ -236,6 +342,10 @@ export class MemoryManager {
           count: hotCache.length,
           bytesUsed: sessionUsage
         },
+        promptCache: {
+          count: Object.values(promptCache).reduce((total, arr) => total + arr.length, 0),
+          providers: Object.keys(promptCache).length
+        },
         coldStorage: {
           count: sessionCount,
           bytesUsed: localUsage
@@ -244,7 +354,11 @@ export class MemoryManager {
       
     } catch (error) {
       console.error('[MemoryManager] Failed to get storage stats:', error);
-      return { hotCache: { count: 0, bytesUsed: 0 }, coldStorage: { count: 0, bytesUsed: 0 } };
+      return { 
+        hotCache: { count: 0, bytesUsed: 0 }, 
+        promptCache: { count: 0, providers: 0 },
+        coldStorage: { count: 0, bytesUsed: 0 } 
+      };
     }
   }
 }

@@ -2,6 +2,7 @@ import broadcast from './broadcast.js';
 import harvest from './harvest.js';
 import { findTabByPlatform } from '../../utils/tab-manager.js';
 import { CHECK_READINESS } from '@hybrid-thinking/messaging';
+import { sendMessage } from '../../utils/message-sender.js';
 
 // Provider config loading (similar to harvest.js)
 let configs = {};
@@ -53,14 +54,14 @@ export default async function execute({ platform, prompt, sessionId }) {
   }
 
   // Ensure provider is initialized by sending a readiness check
-  const readinessResult = await chrome.tabs.sendMessage(targetTab.tabId, {
+  const readinessResult = await sendMessage(targetTab.tabId, {
     type: CHECK_READINESS,
     payload: { config }
+  }, {
+    enableLogging: true,
+    enableRetry: false, // Don't retry readiness checks
+    timeout: 5000
   });
-  
-  if (!readinessResult || readinessResult.success === false) {
-    throw new Error(`Provider not ready: ${readinessResult?.error || 'Unknown error'}`);
-  }
 
   await broadcast({ platform, prompt });
   return await harvest({ platform });

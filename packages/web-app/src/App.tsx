@@ -1,9 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { sidecarService } from './services/SidecarService';
 import { PromptCanvas } from './components/PromptCanvas';
 import './App.css';
 import { WorkflowRunner } from './components/WorkflowRunner';
 import { MemoryViewer } from './components/MemoryViewer';
+import { ResultsDisplay } from './components/ResultsDisplay';
+import { RecentActivitySidebar } from './components/RecentActivitySidebar';
+
+// Define types for our state
+interface WorkflowExecutionState {
+  activeSessionId: string | null;
+  isRunning: boolean;
+  steps: any[];
+  results: Map<string, any>;
+  finalSynthesis: any | null;
+  error: string | null;
+}
+
+interface RecentActivityState {
+  recentWorkflows: any[];
+  recentPromptOutputs: Record<string, any[]>;
+}
 
 // A simple component to get the Extension ID from the developer
 const ExtensionConnector = ({ onConnect, connectionState }) => {
@@ -51,7 +68,80 @@ const ExtensionConnector = ({ onConnect, connectionState }) => {
 export default function App() {
   const [isConnected, setIsConnected] = useState(sidecarService.isReady);
   const [connectionState, setConnectionState] = useState({ status: 'idle', error: null });
-  const [activeTab, setActiveTab] = useState('workflow-runner');
+  const [activeTab, setActiveTab] = useState('prompt'); // 'prompt', 'workflow', 'results', 'memory'
+  
+  // State for managing workflow execution in real-time
+  const [workflowExecution, setWorkflowExecution] = useState<WorkflowExecutionState>({
+    activeSessionId: null,
+    isRunning: false,
+    steps: [],
+    results: new Map(),
+    finalSynthesis: null,
+    error: null,
+  });
+
+  // State for the short-term memory/cache
+  const [recentActivity, setRecentActivity] = useState<RecentActivityState>({
+    recentWorkflows: [],
+    recentPromptOutputs: {},
+  });
+
+  // Fetch initial cache data on load
+  useEffect(() => {
+    const fetchCache = async () => {
+      try {
+        const cache = await sidecarService.getCompleteHotCache();
+        if (cache) {
+          setRecentActivity(cache);
+        }
+      } catch (error) {
+        console.error('Failed to fetch initial cache:', error);
+      }
+    };
+    if (isConnected) {
+      fetchCache();
+    }
+  }, [isConnected]);
+
+  // Listen for real-time messages from the service worker
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const handleMessage = (message: any) => {
+      // Listen for workflow progress updates
+      if (message.type === 'WORKFLOW_UPDATE' && message.sessionId === workflowExecution.activeSessionId) {
+        setWorkflowExecution(prev => {
+          const newResults = new Map(prev.results);
+          if (message.data.result) {
+            newResults.set(message.data.stepId, message.data.result);
+          }
+          
+          // Check for completion
+          const isComplete = message.data.status === 'completed';
+          if (isComplete) {
+            // A workflow just finished, so we should refresh our recent activity cache
+            sidecarService.getCompleteHotCache().then(cache => setRecentActivity(cache));
+          }
+
+          return {
+            ...prev,
+            isRunning: !isComplete,
+            results: newResults,
+            finalSynthesis: isComplete ? message.data.finalSynthesis : prev.finalSynthesis,
+            error: message.data.error || null,
+          };
+        });
+      }
+      
+      // Listen for single prompt completions to update the cache
+      if (message.type === 'PROMPT_COMPLETED') {
+         sidecarService.getCompleteHotCache().then(cache => setRecentActivity(cache));
+      }
+    };
+
+    sidecarService.addMessageListener(handleMessage);
+    return () => sidecarService.removeMessageListener(handleMessage);
+  }, [workflowExecution.activeSessionId, isConnected]);
 
   const handleConnect = async (extensionId) => {
     setConnectionState({ status: 'connecting', error: null });
@@ -64,39 +154,111 @@ export default function App() {
       setIsConnected(false);
     }
   };
+
+  const handleRunWorkflow = useCallback(async (workflow: any) => {
+    // Reset state for a new run
+    setWorkflowExecution({
+      activeSessionId: null,
+      isRunning: true,
+      steps: workflow.steps,
+      results: new Map(),
+      finalSynthesis: null,
+      error: null,
+    });
+    // Switch to results view automatically
+    setActiveTab('results');
+    try {
+      const sessionId = await sidecarService.executeWorkflow(workflow);
+      setWorkflowExecution(prev => ({ ...prev, activeSessionId: sessionId }));
+    } catch (error) {
+      setWorkflowExecution(prev => ({ ...prev, isRunning: false, error: error.message }));
+    }
+  }, []);
+  
+  const handleUseRecentOutput = (text: string) => {
+      // Copy to clipboard and switch to prompt canvas
+      navigator.clipboard.writeText(text);
+      setActiveTab('prompt');
+      // Could also implement direct insertion into active input field
+  };
+
+  const handleLoadWorkflow = (workflow: any) => {
+    // Load workflow results into the results view
+    setWorkflowExecution({
+      activeSessionId: workflow.sessionId,
+      isRunning: false,
+      steps: workflow.steps || [],
+      results: new Map(Object.entries(workflow.results || {})),
+      finalSynthesis: workflow.finalSynthesis || null,
+      error: null,
+    });
+    setActiveTab('results');
+  };
   
   if (!isConnected) {
     return <ExtensionConnector onConnect={handleConnect} connectionState={connectionState} />;
   }
   
-  // Once connected, render the main application canvas.
+  // Once connected, render the main application with unified state management
   return (
-    <div className="app">
-      <nav className="app-nav">
+    <div className="app" style={{ display: 'flex', height: '100vh', background: '#1a1a1a', color: 'white' }}>
+      <RecentActivitySidebar 
+        activity={recentActivity}
+        onUseOutput={handleUseRecentOutput}
+        onLoadWorkflow={handleLoadWorkflow}
+      />
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <nav className="app-nav">
           <button 
-            className={activeTab === 'workflow-runner' ? 'active' : ''}
-            onClick={() => setActiveTab('workflow-runner')}
+            className={activeTab === 'prompt' ? 'active' : ''}
+            onClick={() => setActiveTab('prompt')}
           >
-            Workflow Runner
+            Single Prompt
           </button>
           <button 
-            className={activeTab === 'memory-viewer' ? 'active' : ''}
-            onClick={() => setActiveTab('memory-viewer')}
+            className={activeTab === 'workflow' ? 'active' : ''}
+            onClick={() => setActiveTab('workflow')}
+          >
+            Workflow Builder
+          </button>
+          <button 
+            className={activeTab === 'results' ? 'active' : ''}
+            onClick={() => setActiveTab('results')}
+          >
+            Results
+          </button>
+          <button 
+            className={activeTab === 'memory' ? 'active' : ''}
+            onClick={() => setActiveTab('memory')}
           >
             Memory Viewer
           </button>
-          <button 
-            className={activeTab === 'prompt-canvas' ? 'active' : ''}
-            onClick={() => setActiveTab('prompt-canvas')}
-          >
-            Prompt Canvas
-          </button>
         </nav>
-      <main className="app-main">
-          {activeTab === 'workflow-runner' && <WorkflowRunner />}
-          {activeTab === 'memory-viewer' && <MemoryViewer />}
-          {activeTab === 'prompt-canvas' && <PromptCanvas />}
-        </main>
+        <div className="app-main" style={{ flex: 1, padding: '1rem', overflowY: 'auto' }}>
+          {activeTab === 'prompt' && <PromptCanvas />}
+          {activeTab === 'workflow' && (
+            <WorkflowRunner 
+              executionState={{
+                isRunning: workflowExecution.isRunning,
+                currentStep: workflowExecution.steps.findIndex(step => step.status === 'running'),
+                error: workflowExecution.error,
+                sessionId: workflowExecution.activeSessionId
+              }}
+              onRunWorkflow={handleRunWorkflow}
+              onStopWorkflow={() => {
+                // Stop workflow logic - for now just reset state
+                setWorkflowExecution(prev => ({
+                  ...prev,
+                  isRunning: false,
+                  error: 'Workflow stopped by user'
+                }));
+              }}
+            />
+          )}
+          {activeTab === 'results' && <ResultsDisplay workflowState={workflowExecution} />}
+          {activeTab === 'memory' && <MemoryViewer />}
+        </div>
+      </main>
     </div>
   );
 }

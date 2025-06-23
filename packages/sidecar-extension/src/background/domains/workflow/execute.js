@@ -14,28 +14,35 @@ const activeWorkflows = new Map(); // Track running workflows
  * Execute a workflow with multiple steps
  * @param {Object} payload - The workflow execution payload
  * @param {string} payload.workflowId - ID of the workflow to execute
- * @param {Object} payload.input - Input data for the workflow
+ * @param {Array} payload.steps - Workflow steps to execute
+ * @param {Object} payload.synthesis - Synthesis configuration
+ * @param {Object} payload.options - Additional options
  * @param {Object} context - Request context
  * @returns {Promise<Object>} Workflow execution result
  */
 export async function execute(payload, context) {
-  const { workflowId, input } = payload;
+  const { workflowId, steps, synthesis, options = {} } = payload;
   const sessionId = crypto.randomUUID();
   
   console.log(`[Workflow] Starting execution of workflow ${workflowId} with session ${sessionId}`);
   
   try {
-    // Load workflow definition
-    const workflow = await loadWorkflowDefinition(workflowId);
-    if (!workflow) {
-      throw new Error(`Workflow not found: ${workflowId}`);
+    // Use the provided workflow structure directly
+    const workflow = {
+      id: workflowId,
+      steps: steps || [],
+      synthesis: synthesis || null
+    };
+    
+    if (!workflow.steps || workflow.steps.length === 0) {
+      throw new Error(`No steps provided for workflow: ${workflowId}`);
     }
     
     // Create session record
     const sessionRecord = {
       sessionId,
       workflowId,
-      input,
+      workflow,
       startTime: Date.now(),
       status: 'running',
       steps: [],
@@ -49,7 +56,7 @@ export async function execute(payload, context) {
     await memoryManager.saveSession(sessionRecord);
     
     // Execute workflow steps
-    const result = await executeWorkflowSteps(workflow, input, sessionRecord);
+    const result = await executeWorkflowSteps(workflow, sessionRecord);
     
     // Update final session state
     sessionRecord.status = 'completed';
@@ -132,7 +139,7 @@ async function loadWorkflowDefinition(workflowId) {
 /**
  * Execute all steps in a workflow
  */
-async function executeWorkflowSteps(workflow, input, sessionRecord) {
+async function executeWorkflowSteps(workflow, sessionRecord) {
   const stepResults = {};
   
   for (let i = 0; i < workflow.steps.length; i++) {
@@ -142,8 +149,8 @@ async function executeWorkflowSteps(workflow, input, sessionRecord) {
     console.log(`[Workflow] Executing step ${step.id} (${i + 1}/${workflow.steps.length})`);
     
     try {
-      // Process template with variables
-      const prompt = processTemplate(step.template, { input, ...stepResults });
+      // Use the prompt directly from the step (no template processing for now)
+      const prompt = step.prompt || '';
       
       // Execute the step
       const stepResult = await executeStep(step, prompt, sessionRecord);

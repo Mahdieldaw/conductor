@@ -148,13 +148,16 @@ class SidecarService {
   }
 
   // Workflow methods
-  async executeWorkflow(workflowId, steps, tabId, options = {}) {
+  async executeWorkflow(workflow) {
+    // Generate a unique workflow ID if not provided
+    const workflowId = workflow.workflowId || `wf-${Date.now()}`;
+    
     return this.#sendMessage({
       type: EXECUTE_WORKFLOW,
       workflowId,
-      steps,
-      tabId,
-      options
+      steps: workflow.steps,
+      synthesis: workflow.synthesis,
+      options: workflow.options || {}
     });
   }
 
@@ -179,11 +182,42 @@ class SidecarService {
     });
   }
 
+  async getCompleteHotCache() {
+    // For now, return the same as getHotCache until backend implements the complete version
+    try {
+      const cache = await this.getHotCache();
+      return {
+        recentWorkflows: cache?.recentWorkflows || [],
+        recentPromptOutputs: cache?.recentPromptOutputs || {}
+      };
+    } catch (error) {
+      console.warn('Failed to get complete hot cache:', error);
+      return {
+        recentWorkflows: [],
+        recentPromptOutputs: {}
+      };
+    }
+  }
+
   async getFullHistory(options = {}) {
     return this.#sendMessage({
       type: GET_FULL_HISTORY,
       options
     });
+  }
+
+  // Message listener methods for real-time updates
+  addMessageListener(callback) {
+    // For now, this is a placeholder - in a real implementation,
+    // this would listen for messages from the extension
+    console.log('Message listener added (placeholder)');
+    this._messageCallback = callback;
+  }
+
+  removeMessageListener(callback) {
+    // For now, this is a placeholder
+    console.log('Message listener removed (placeholder)');
+    this._messageCallback = null;
   }
 }
 

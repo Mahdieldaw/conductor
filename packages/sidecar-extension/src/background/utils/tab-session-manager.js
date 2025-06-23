@@ -1,6 +1,7 @@
 // packages/sidecar-extension/src/background/tab-session-manager.js
 import { getPlatformKey } from './tab-manager.js';
 import { START_NEW_CHAT } from '@hybrid-thinking/messaging';
+import { sendMessage } from './message-sender.js';
 
 /**
  * Manages unique, per-tab session IDs to solve the "new vs. continue" chat problem.
@@ -57,11 +58,12 @@ class TabSessionManager {
     // Step 1: Command the content script to click the "New Chat" button.
     try {
       console.log(`[TabSessionManager] Sending START_NEW_CHAT to tab ${tabId}`);
-      const response = await chrome.tabs.sendMessage(tabId, { type: START_NEW_CHAT });
+      const response = await sendMessage(tabId, { type: START_NEW_CHAT }, {
+        enableLogging: true,
+        enableRetry: true,
+        timeout: 10000 // Longer timeout for session reset operations
+      });
       
-      if (!response || !response.success) {
-        throw new Error(response.error || 'Content script failed to start a new chat.');
-      }
       console.log(`[TabSessionManager] Content script successfully started new chat for tab ${tabId}.`);
 
       // Step 2: Only on success, generate and store a new session ID.
