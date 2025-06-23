@@ -13,12 +13,24 @@
  */
 export async function sendMessageToTab(tabId, message, timeout = 5000) {
   return new Promise((resolve, reject) => {
+    // Validate tabId type - must be a valid integer
+    if (!Number.isInteger(tabId) || tabId <= 0) {
+      reject(new Error(`Invalid tabId: expected positive integer, got ${typeof tabId} (${tabId})`));
+      return;
+    }
+    
+    // Validate message object
+    if (!message || typeof message !== 'object') {
+      reject(new Error(`Invalid message: expected object, got ${typeof message}`));
+      return;
+    }
+    
     // Set up timeout
     const timeoutId = setTimeout(() => {
       reject(new Error(`Message timeout after ${timeout}ms for tab ${tabId}`));
     }, timeout);
 
-    // Send the message
+    // Send the message with proper API signature
     chrome.tabs.sendMessage(tabId, message, (response) => {
       clearTimeout(timeoutId);
       

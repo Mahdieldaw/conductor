@@ -21,6 +21,19 @@ const activeWorkflows = new Map(); // Track running workflows
  * @returns {Promise<Object>} Workflow execution result
  */
 export async function execute(payload, context) {
+  // Validate payload structure before destructuring
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Execute workflow failed: payload is required and must be an object');
+  }
+  
+  if (!payload.workflowId) {
+    throw new Error('Execute workflow failed: payload.workflowId is required');
+  }
+  
+  if (!Array.isArray(payload.steps)) {
+    throw new Error('Execute workflow failed: payload.steps must be an array');
+  }
+  
   const { workflowId, steps, synthesis, options = {} } = payload;
   const sessionId = crypto.randomUUID();
   

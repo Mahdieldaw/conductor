@@ -173,8 +173,15 @@ function validatePayloadStructure(payload, schema) {
       }
       
       if (key in payload && propSchema.type) {
-        const actualType = typeof payload[key];
-        if (actualType !== propSchema.type) {
+        const value = payload[key];
+        const actualType = typeof value;
+        
+        // Handle array type validation
+        if (propSchema.type === 'array') {
+          if (!Array.isArray(value)) {
+            throw new Error(`Property '${key}' must be an array, got ${actualType}`);
+          }
+        } else if (actualType !== propSchema.type) {
           throw new Error(`Property '${key}' must be of type ${propSchema.type}, got ${actualType}`);
         }
       }

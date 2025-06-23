@@ -3,7 +3,7 @@
 
 import { createMessageRouter } from './core/message-router.js';
 import { handleError } from './core/error-handler.js';
-import { loggingMiddleware, metricsMiddleware, validationMiddleware } from './core/middleware.js';
+import { loggingMiddleware, metricsMiddleware, validationMiddleware, createMiddleware } from './core/middleware.js';
 import * as promptDomain from './domains/prompt/index.js';
 import * as readinessDomain from './domains/readiness/index.js';
 import * as sessionDomain from './domains/session/index.js';
@@ -43,7 +43,37 @@ const router = createMessageRouter({
   [GET_HOT_CACHE]: memoryDomain.getHotCache,
   [GET_FULL_HISTORY]: memoryDomain.getFullHistory
 }, {
-  middleware: [loggingMiddleware, metricsMiddleware, validationMiddleware],
+  middleware: [
+    loggingMiddleware, 
+    metricsMiddleware, 
+    createMiddleware(validationMiddleware, {
+      schemas: {
+        [EXECUTE_WORKFLOW]: {
+          required: true,
+          properties: {
+            workflowId: { type: 'string', required: true },
+            steps: { type: 'array', required: true },
+            synthesis: { type: 'object', required: false },
+            options: { type: 'object', required: false }
+          }
+        },
+        [BROADCAST_PROMPT]: {
+          required: true,
+          properties: {
+            platform: { type: 'string', required: true },
+            prompt: { type: 'string', required: true }
+          }
+        },
+        [HARVEST_RESPONSE]: {
+          required: true,
+          properties: {
+            platform: { type: 'string', required: true }
+          }
+        }
+      },
+      strictMode: true
+    })
+  ],
   errorHandler: handleError
 });
 

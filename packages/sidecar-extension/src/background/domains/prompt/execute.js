@@ -63,6 +63,6 @@ export default async function execute({ platform, prompt, sessionId }) {
     timeout: 5000
   });
 
-  await broadcast({ platform, prompt });
-  return await harvest({ platform });
+  await broadcast({ platform, prompt, tabId: targetTab.tabId });
+  return await harvest({ platform, tabId: targetTab.tabId });
 }

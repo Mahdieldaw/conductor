@@ -1,14 +1,19 @@
 import { tabManager } from '../../utils/tab-manager.js';
 import { sendMessage } from '../../utils/message-sender.js';
 
-export default async function broadcast({ platform, prompt }) {
-  const targetTab = tabManager.findTabByPlatform(platform);
-  if (!targetTab) {
-    throw new Error(`Broadcast failed: No tab for platform ${platform}.`);
+export default async function broadcast({ platform, prompt, tabId }) {
+  let targetTabId = tabId;
+
+  if (!targetTabId) {
+    const targetTab = await tabManager.findTabByPlatform(platform);
+    if (!targetTab) {
+      throw new Error(`Broadcast failed: No tab for platform ${platform}.`);
+    }
+    targetTabId = targetTab.tabId;
   }
 
   // Use the message-sender utility for reliable communication
-  const response = await sendMessage(targetTab.tabId, {
+  const response = await sendMessage(targetTabId, {
     type: 'BROADCAST_PROMPT',
     payload: { prompt }
   }, {
