@@ -1,4 +1,14 @@
 // provider.js - Production-Grade Concurrent Harvest Engine
+// Updated to use centralized DOM utilities and configuration management
+
+import { 
+  querySelector, 
+  waitForElement, 
+  simulateInput, 
+  simulateClick, 
+  abortableDelay,
+  extractTextContent 
+} from './utils/dom-utils.js';
 
 export class Provider {
   constructor(config) { // Accepts config as argument
@@ -8,75 +18,6 @@ export class Provider {
     this.config = config;
     this.activeControllers = new Set(); // Track active abort controllers
     console.log(`[Sidecar Provider] Initialized with config for: ${this.config.platformKey}`);
-  }
-  
-  // Handles an ARRAY of selectors, including searching within Shadow DOMs.
-  #querySelector(selectorArray) {
-    if (!selectorArray || !Array.isArray(selectorArray)) return null;
-
-    const findElement = (selectors, root) => {
-      for (const selector of selectors) {
-        try {
-          // Check the current root
-          const element = root.querySelector(selector);
-          if (element) return element;
-        } catch (e) {
-          // This can happen with invalid selectors, especially during development
-          console.warn(`[Sidecar] Invalid selector in array: ${selector}`, e);
-          continue; // Try the next selector
-        }
-      }
-
-      // If not found, search inside all shadow roots in the current root
-      const shadowRoots = root.querySelectorAll('*');
-      for (const element of shadowRoots) {
-        if (element.shadowRoot) {
-          const foundInShadow = findElement(selectors, element.shadowRoot);
-          if (foundInShadow) return foundInShadow;
-        }
-      }
-
-      return null;
-    };
-
-    return findElement(selectorArray, document);
-  }
-
-  // Waits for an element to appear.
-  async #waitForElement(selectorArray, timeout = null) {
-    const defaultTimeout = this.config.timing?.elementWaitTimeout || 7000;
-    const actualTimeout = timeout || defaultTimeout;
-    return new Promise((resolve, reject) => {
-        let el = this.#querySelector(selectorArray);
-        if (el) return resolve(el);
-        const observer = new MutationObserver(() => {
-            el = this.#querySelector(selectorArray);
-            if (el) {
-                observer.disconnect();
-                resolve(el);
-            }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-        setTimeout(() => {
-            observer.disconnect();
-            reject(new Error(`Element not found after ${actualTimeout}ms for selectors: ${selectorArray.join(' OR ')}`));
-        }, actualTimeout);
-    });
-  }
-
-  // Unified helper for setting text.
-  #setElementText(el, text) {
-    if (!el) throw new Error('Cannot set text on a null element.');
-    el.focus();
-    if (typeof el.value !== 'undefined') {
-        el.value = text;
-        el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-    } else if (el.isContentEditable) {
-        el.textContent = text;
-        el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
-    } else {
-        throw new Error("Target element is not a standard input or contentEditable.");
-    }
   }
 
   // Unified broadcast method with normalized response structure and metadata
@@ -96,20 +37,16 @@ export class Provider {
           case 'fill': {
             if (!cssSelectorList) throw new Error(`No selectors defined for target: ${target}`);
             // Use the timeout from the JSON config, with a sensible default.
-          const el = await this.#waitForElement(cssSelectorList, timeout || this.config.timing?.broadcastFillTimeout || 7000);
-            this.#setElementText(el, value.replace('{{prompt}}', prompt));
+            const el = await waitForElement(cssSelectorList, timeout || this.config.timing?.broadcastFillTimeout || 7000);
+            simulateInput(el, value.replace('{{prompt}}', prompt));
             break;
           }
 
           case 'click': {
             if (!cssSelectorList) throw new Error(`No selectors defined for target: ${target}`);
             // Use the timeout from the JSON config.
-          const el = await this.#waitForElement(cssSelectorList, timeout || this.config.timing?.broadcastClickTimeout || 5000);
-            if (el.disabled) {
-              // This is a specific failure case after the element is found.
-              throw new Error(`Element for target '${target}' was found but is disabled.`);
-            }
-            el.click();
+            const el = await waitForElement(cssSelectorList, timeout || this.config.timing?.broadcastClickTimeout || 5000);
+            simulateClick(el, { checkDisabled: true });
             break;
           }
 
@@ -230,12 +167,12 @@ export class Provider {
 
     console.log(`[Sidecar NewChat - ${platformKey}] Attempting to start a new chat.`);
     try {
-      const newChatButton = await this.#waitForElement(newChatSelectors, this.config.timing?.newChatTimeout || 5000);
+      const newChatButton = await waitForElement(newChatSelectors, this.config.timing?.newChatTimeout || 5000);
       if (newChatButton) {
-        newChatButton.click();
+        simulateClick(newChatButton);
         console.log(`[Sidecar NewChat - ${platformKey}] ✅ Clicked 'new chat' button.`);
         // Allow a brief moment for the UI to update
-        await new Promise(resolve => setTimeout(resolve, this.config.timing?.newChatStabilizationDelay || 300));
+        await abortableDelay(this.config.timing?.newChatStabilizationDelay || 300);
         return { success: true };
       }
       throw new Error("'New Chat' button not found with provided selectors.");
@@ -322,10 +259,10 @@ export class Provider {
       for (const check of checks) {
         const list = selectors[check.target];
         if (!list) continue; // Skip if selector for check is not defined
-        if (check.type === 'absence' && this.#querySelector(list)) { 
+        if (check.type === 'absence' && querySelector(list)) { 
           streamingStopped = false; break; 
         }
-        if (check.type === 'presence' && !this.#querySelector(list)) { 
+        if (check.type === 'presence' && !querySelector(list)) { 
           streamingStopped = false; break; 
         }
       }
@@ -336,7 +273,7 @@ export class Provider {
       }
       
       const delay = (harvestStrategy.baseDelay || 500) * Math.pow(harvestStrategy.backoffMultiplier || 1.2, Math.min(attempt, 10));
-      await this.#abortableDelay(delay, signal);
+      await abortableDelay(delay, signal);
       attempt++;
     }
 
@@ -352,15 +289,15 @@ export class Provider {
       for (let markerAttempt = 0; markerAttempt < markerCheckAttempts; markerAttempt++) {
         if (signal?.aborted) throw new Error('Polling aborted');
         
-        if (this.#querySelector(completionMarkerSelector)) {
+        if (querySelector(completionMarkerSelector)) {
           console.log(`[Sidecar Harvest - ${platformKey}] ✅ Completion marker found after ${markerAttempt + 1} checks`);
-          await this.#abortableDelay(this.config.timing?.markerFoundStabilizationDelay || 1700, signal); // Stabilization delay
+          await abortableDelay(this.config.timing?.markerFoundStabilizationDelay || 1700, signal); // Stabilization delay
           const result = await this.#performScrape();
           if (result) return result;
           throw new Error("Polling found completion marker but scraping returned empty result");
         }
         
-        await this.#abortableDelay(this.config.timing?.markerCheckInterval || 200, signal); // Short interval for marker detection
+        await abortableDelay(this.config.timing?.markerCheckInterval || 200, signal); // Short interval for marker detection
       }
       console.log(`[Sidecar Harvest - ${platformKey}] ❌ No completion marker found after ${markerCheckAttempts} attempts`);
       throw new Error(`Polling failed: No completion marker found after ${markerCheckAttempts} attempts`);
@@ -405,7 +342,7 @@ export class Provider {
 
       const checkAndResolve = async () => {
         // Priority 1: Check for the definitive completion marker
-        if (this.#querySelector(completionMarkerSelector)) {
+        if (querySelector(completionMarkerSelector)) {
           console.log(`[Sidecar Harvest - ${platformKey}] ✅ Completion marker found.`);
           cleanup();
           setTimeout(finalScrape, 1700); // Stabilization delay
@@ -417,7 +354,7 @@ export class Provider {
       const signalListener = signal ? () => { cleanup(); reject(new Error('Observer aborted')); } : null;
       if (signalListener) signal.addEventListener('abort', signalListener);
       
-      const targetNode = this.#querySelector(observeTargetSelector);
+      const targetNode = querySelector(observeTargetSelector);
       if (!targetNode) return reject(new Error(`Observer failed: could not find node for target '${harvestStrategy.observeTarget}'`));
 
       observer = new MutationObserver(async () => {
@@ -431,7 +368,7 @@ export class Provider {
         debounceTimer = setTimeout(async () => {
           // Check if still in thinking/generating state before triggering
           const streamingIndicatorSelector = selectors.streamingIndicator;
-          if (streamingIndicatorSelector && this.#querySelector(streamingIndicatorSelector)) {
+          if (streamingIndicatorSelector && querySelector(streamingIndicatorSelector)) {
             console.log(`[Sidecar Harvest - ${platformKey}] Still thinking/generating, resetting debounce timer...`);
             // Reset debounce timer - continue waiting
             debounceTimer = setTimeout(arguments.callee, DEBOUNCE_DELAY);
@@ -528,24 +465,7 @@ export class Provider {
     });
   }
 
-  #abortableDelay(ms, signal) {
-    return new Promise((resolve, reject) => {
-      if (signal?.aborted) {
-        return reject(new Error('Delay aborted'));
-      }
-      const timeout = setTimeout(() => {
-        signalListener && signal?.removeEventListener('abort', signalListener);
-        resolve();
-      }, ms);
-      const signalListener = signal ? () => {
-        clearTimeout(timeout);
-        reject(new Error('Delay aborted'));
-      } : null;
-      if (signalListener) {
-        signal.addEventListener('abort', signalListener);
-      }
-    });
-  }
+
 
   /**
    * Cleanup method for graceful shutdown
@@ -569,7 +489,7 @@ export class Provider {
     console.log(`[Sidecar Readiness - ${platformKey}] Checking for readiness markers.`);
 
     // Rule 1: Is the prompt textarea (or equivalent) present?
-    const isReadyMarkerPresent = selectors.readyMarker && this.#querySelector(selectors.readyMarker);
+    const isReadyMarkerPresent = selectors.readyMarker && querySelector(selectors.readyMarker);
 
     if (isReadyMarkerPresent) {
       console.log(`[Sidecar Readiness - ${platformKey}] Found ready marker. Status: READY.`);
@@ -577,7 +497,7 @@ export class Provider {
     }
 
     // Rule 2: If no ready marker, is the login button present?
-    const isLoginMarkerPresent = selectors.loginMarker && this.#querySelector(selectors.loginMarker);
+    const isLoginMarkerPresent = selectors.loginMarker && querySelector(selectors.loginMarker);
 
     if (isLoginMarkerPresent) {
       console.log(`[Sidecar Readiness - ${platformKey}] Found login marker, but no ready marker. Status: LOGIN_REQUIRED.`);

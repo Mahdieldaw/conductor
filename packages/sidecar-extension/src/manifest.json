@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Hybrid Thinking OS Sidecar",
+  "name": "Hybrid Sidecar",
   "version": "1.0.0",
   "description": "Browser extension that acts as a local API to execute AI workflow steps on live LLM websites",
   "background": {
@@ -16,7 +16,10 @@
         "*://*.claude.ai/*",
         "*://*.console.anthropic.com/*"
       ],
-      "js": ["content/readiness-detector.js"],
+      "js": [
+        "content/readiness-detector.js",
+        "content/content-script-bridge.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     },
@@ -54,8 +57,11 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "content/inpage-boot.js",
         "content/content.js",
         "content/readiness-detector.js",
+        "content/utils/dom-utils.js",
+        "content/configs/*.json",
         "chunks/*.js"
       ],
       "matches": [

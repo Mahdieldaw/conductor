@@ -109,16 +109,16 @@ pnpm install
   - [x] Remove "always-reload" behavior.
   - [x] Integrate getSession/resetSession logic based on UI toggle.
   - [x] Normalize all provider responses for robust error handling.
-- [ ] Build the Three-Stage Readiness Pipeline:
-  - [ ] Implement `<ReadinessGate>` UI and `useReadinessFlow` hook.
-  - [ ] Add service worker logic for tab readiness and recovery.
-  - [ ] Add readiness-detector.js content script with login/ready markers.
+- [x] Build the Three-Stage Readiness Pipeline:
+  - [x] Implement `<ReadinessGate>` UI and `useReadinessFlow` hook.
+  - [x] Add service worker logic for tab readiness and recovery.
+  - [x] Add readiness-detector.js content script with login/ready markers.
 
 ## Phase 4: Technical Hardening & Observability 🛡️
 
 **Goal:** Strengthen error handling, logging, and support for more providers.
 
-- [ ] Harmonize error messages and implement error-classifier.js.
+- [x] Harmonize error messages and implement error-classifier.js.
 - [ ] Implement a logging bus for key events and step progress.
 - [ ] Surface "Step X of N" progress in UI.
 - [ ] Add support for more LLM providers (e.g., Gemini, Perplexity).

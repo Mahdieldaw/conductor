@@ -195,12 +195,11 @@ When contributing new workflows:
 
 ### Validation
 Workflows are validated against a JSON schema to ensure correctness.
-
+```
 ### Testing
 ```bash
 pnpm test
 ```
-
 ### Linting
 ```bash
 pnpm lint

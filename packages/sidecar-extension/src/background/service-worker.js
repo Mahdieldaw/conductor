@@ -25,7 +25,22 @@ import {
   GET_HOT_CACHE,
   GET_FULL_HISTORY
 } from '@hybrid-thinking/messaging';
-import { tabManager } from './utils/tab-manager.js'; // Import tabManager
+// Legacy tab-manager removed - now using TabPool and FlightManager
+import { configManager } from './utils/config-manager.js'; // Import configManager
+import { tabPool } from './utils/tab-pool.js'; // Import new TabPool
+import { flightManager } from './utils/flight-manager.js'; // Import new FlightManager
+
+// Handler for provider configuration requests
+async function getProviderConfig(message, sender) {
+  try {
+    const { hostname } = message;
+    const config = await configManager.getConfigForHostname(hostname);
+    return { success: true, config };
+  } catch (error) {
+    console.error('[Service Worker] Failed to get provider config:', error);
+    return { success: false, error: error.message };
+  }
+}
 
 // Create router with domain handlers and middleware
 const router = createMessageRouter({
@@ -41,7 +56,8 @@ const router = createMessageRouter({
   [WORKFLOW_STATUS]: workflowDomain.status,
   [WORKFLOW_RESULT]: workflowDomain.result,
   [GET_HOT_CACHE]: memoryDomain.getHotCache,
-  [GET_FULL_HISTORY]: memoryDomain.getFullHistory
+  [GET_FULL_HISTORY]: memoryDomain.getFullHistory,
+  'GET_PROVIDER_CONFIG': getProviderConfig
 }, {
   middleware: [
     loggingMiddleware, 
@@ -97,19 +113,44 @@ const router = createMessageRouter({
 
 // --- Message Listener ---
 
-chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
-  // Make the listener function async
-  (async () => {
-    console.log(`[Service Worker] Received message: ${message.type}. Waiting for TabManager...`);
-    // This is the critical fix: wait for the initial tab scan to complete.
-    await tabManager.ready;
-    console.log(`[Service Worker] TabManager is ready. Routing message: ${message.type}`);
+chrome.runtime.onMessageExternal.addListener(async (message, sender, sendResponse) => {
+  try {
+    // Wait for all managers to be ready before processing messages
+    await Promise.all([
+      tabPool.ready,
+      flightManager.ready
+    ]);
     
-    // Use the router function directly - it handles sendResponse internally
-    router(message, sender, sendResponse);
-  })();
-  
+    const response = await router.route(message, sender);
+    sendResponse(response);
+  } catch (error) {
+    console.error('[Service Worker] Error handling external message:', error);
+    sendResponse({ error: error.message });
+  }
   return true; // Keep the message channel open for async response
 });
+
+// Initialize all managers
+(async () => {
+  try {
+    // Initialize configuration manager first
+    await configManager.initialize();
+    console.log('[Service Worker] Configuration manager initialized');
+    
+    // Initialize TabPool and FlightManager
+    await tabPool.initialize();
+    console.log('[Service Worker] TabPool initialized');
+    
+    await flightManager.initialize();
+    console.log('[Service Worker] FlightManager initialized');
+    
+    // Start periodic cleanup for FlightManager
+    flightManager.startPeriodicCleanup();
+    
+    console.log('[Service Worker] All systems initialized successfully');
+  } catch (error) {
+    console.error('[Service Worker] Failed to initialize systems:', error);
+  }
+})();
 
 console.log('[Service Worker] Initialized with new router architecture');

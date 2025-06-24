@@ -1,4 +1,4 @@
-import { findTabByPlatform } from '../../utils/tab-manager.js';
+import { tabPool } from '../../utils/tab-pool.js';
 import { INJECTION_CONFIG } from '../../config/injection-config.js';
 
 let configs = {};
@@ -100,8 +100,8 @@ export async function check({ providerKey }) {
         return { status: 'ERROR', message: `Configuration for '${providerKey}' not found.` };
     }
 
-    // 1. Find the tab.
-    const tab = await findTabByPlatform(providerKey);
+    // 1. Find or get a worker tab.
+    const tab = await tabPool.getWorkerTab(providerKey);
     if (!tab) {
         return { status: 'TAB_NOT_OPEN', message: `${config.name || providerKey} tab not found.`, data: { url: config.url } };
     }
@@ -109,10 +109,10 @@ export async function check({ providerKey }) {
     // 2. Wait for content script to load, then execute the readiness function
     try {
         // First, ensure the content script is loaded and window.hybrid.checkReadiness exists
-        await waitForContentScript(tab.tabId);
+        await waitForContentScript(tab.id);
         
         const [result] = await chrome.scripting.executeScript({
-            target: { tabId: tab.tabId },
+            target: { tabId: tab.id },
             // This function runs in the context of the content script
             func: (cfg) => window.hybrid.checkReadiness(cfg),
             args: [config], // Pass the config object as an argument
@@ -127,13 +127,13 @@ export async function check({ providerKey }) {
         // Enrich the successful 'READY' status with the tabId and session info before returning.
         if (readinessStatus.status === 'READY') {
             // Note: Session management would ideally be handled here or in the router after this check passes.
-            readinessStatus.data = { tabId: tab.tabId };
+            readinessStatus.data = { tabId: tab.id };
         }
         
         return readinessStatus;
 
     } catch (err) {
-        console.error(`[Readiness Check] Error executing script on tab ${tab.tabId}:`, err);
+        console.error(`[Readiness Check] Error executing script on tab ${tab.id}:`, err);
         return { status: 'ERROR', message: `Could not check readiness. The tab may be crashed or protected. (${err.message})` };
     }
 }

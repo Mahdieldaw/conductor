@@ -32,6 +32,13 @@ This package defines the standardized message types used for communication betwe
 - `WORKFLOW_STATUS`: Check workflow execution status
 - `WORKFLOW_RESULT`: Retrieve workflow results
 
+### Error Handling
+- `PROMPT_ERROR`: Reports errors during prompt processing or harvesting.
+
+### Legacy/Alternative Types
+- `FLIGHT_ID_ACK`: Acknowledges receipt of a flight ID.
+- `DOM_HARVEST_DONE`: Indicates DOM harvesting is complete (used as a fallback).
+
 ## Usage
 
 ### Installation
