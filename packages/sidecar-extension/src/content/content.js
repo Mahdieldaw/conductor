@@ -1,4 +1,12 @@
 // packages/sidecar-extension/src/content/content.js
+import {
+  HEALTH_CHECK,
+  PING,
+  CHECK_READINESS,
+  START_NEW_CHAT,
+  BROADCAST_PROMPT,
+  HARVEST_RESPONSE
+} from '@hybrid-thinking/messaging';
 import { Provider } from './provider.js';
 
 (function() {
@@ -15,19 +23,19 @@ import { Provider } from './provider.js';
     const { type, payload } = message;
 
     // A simple health check to confirm the content script is alive and listening.
-    if (type === 'HEALTH_CHECK') {
+    if (type === HEALTH_CHECK) {
       sendResponse({ healthy: true, providerInitialized: !!provider });
       return;
     }
     
     // Handle PING messages for tab readiness checks
-    if (type === 'PING') {
+    if (type === PING) {
       sendResponse({ success: true, timestamp: Date.now() });
       return;
     }
     
     // The CHECK_READINESS action is special: it creates the provider instance.
-    if (type === 'CHECK_READINESS') {
+    if (type === CHECK_READINESS) {
       try {
         provider = new Provider(payload.config); // Pass the config from SW
         // Expose for debugging
@@ -49,13 +57,13 @@ import { Provider } from './provider.js';
 
     // Route other actions to the provider instance.
     switch (type) {
-      case 'START_NEW_CHAT':
+      case START_NEW_CHAT:
         provider.startNewChat().then(sendResponse);
         break;
-      case 'BROADCAST_PROMPT':
+      case BROADCAST_PROMPT:
         provider.broadcast(payload.prompt).then(sendResponse);
         break;
-      case 'HARVEST_RESPONSE':
+      case HARVEST_RESPONSE:
         provider.harvest().then(sendResponse);
         break;
       default:

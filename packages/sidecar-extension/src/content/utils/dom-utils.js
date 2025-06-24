@@ -3,9 +3,9 @@
 
 /**
  * Searches for an element using an array of selectors, including Shadow DOM support.
- * @param {string[]} selectorArray - Array of CSS selectors to try
- * @param {Document|ShadowRoot} root - Root element to search from (defaults to document)
- * @returns {Element|null} Found element or null
+ * @param {string[]} selectorArray - An array of CSS selectors to try.
+ * @param {Document|ShadowRoot} [root=document] - The root element to search from.
+ * @returns {Element|null} The found element or null.
  */
 export function querySelector(selectorArray, root = document) {
   if (!selectorArray || !Array.isArray(selectorArray)) return null;
@@ -40,10 +40,10 @@ export function querySelector(selectorArray, root = document) {
 
 /**
  * Waits for an element to appear in the DOM.
- * @param {string[]} selectorArray - Array of CSS selectors to try
- * @param {number} timeout - Timeout in milliseconds (default: 7000)
- * @param {Document|ShadowRoot} root - Root element to search from (defaults to document)
- * @returns {Promise<Element>} Promise that resolves with the found element
+ * @param {string[]} selectorArray - An array of CSS selectors to try.
+ * @param {number} [timeout=7000] - The timeout in milliseconds.
+ * @param {Document|ShadowRoot} [root=document] - The root element to search from.
+ * @returns {Promise<Element>} A promise that resolves with the found element.
  */
 export function waitForElement(selectorArray, timeout = 7000, root = document) {
   return new Promise((resolve, reject) => {
@@ -71,12 +71,12 @@ export function waitForElement(selectorArray, timeout = 7000, root = document) {
 }
 
 /**
- * Simulates user input on an element (supports both input elements and contentEditable).
- * @param {Element} element - The target element
- * @param {string} text - Text to input
- * @param {Object} options - Additional options
- * @param {boolean} options.focus - Whether to focus the element first (default: true)
- * @param {boolean} options.clear - Whether to clear existing content first (default: true)
+ * Simulates user input on an element.
+ * @param {Element} element - The target element.
+ * @param {string} text - The text to input.
+ * @param {object} [options={}] - Additional options.
+ * @param {boolean} [options.focus=true] - Whether to focus the element first.
+ * @param {boolean} [options.clear=true] - Whether to clear existing content first.
  */
 export function simulateInput(element, text, options = {}) {
   const { focus = true, clear = true } = options;
@@ -111,11 +111,11 @@ export function simulateInput(element, text, options = {}) {
 }
 
 /**
- * Simulates a click on an element with optional validation.
- * @param {Element} element - The target element
- * @param {Object} options - Additional options
- * @param {boolean} options.checkDisabled - Whether to check if element is disabled (default: true)
- * @param {boolean} options.focus - Whether to focus before clicking (default: false)
+ * Simulates a click on an element.
+ * @param {Element} element - The target element.
+ * @param {object} [options={}] - Additional options.
+ * @param {boolean} [options.checkDisabled=true] - Whether to check if the element is disabled.
+ * @param {boolean} [options.focus=false] - Whether to focus before clicking.
  */
 export function simulateClick(element, options = {}) {
   const { checkDisabled = true, focus = false } = options;
@@ -136,10 +136,10 @@ export function simulateClick(element, options = {}) {
 }
 
 /**
- * Creates an abortable delay that can be cancelled via AbortSignal.
- * @param {number} ms - Delay in milliseconds
- * @param {AbortSignal} signal - Optional abort signal
- * @returns {Promise<void>} Promise that resolves after the delay
+ * Creates an abortable delay.
+ * @param {number} ms - The delay in milliseconds.
+ * @param {AbortSignal} [signal=null] - An optional abort signal.
+ * @returns {Promise<void>} A promise that resolves after the delay or rejects if aborted.
  */
 export function abortableDelay(ms, signal = null) {
   return new Promise((resolve, reject) => {
@@ -167,8 +167,8 @@ export function abortableDelay(ms, signal = null) {
 
 /**
  * Checks if an element is visible in the viewport.
- * @param {Element} element - The element to check
- * @returns {boolean} True if element is visible
+ * @param {Element} element - The element to check.
+ * @returns {boolean} True if the element is visible, false otherwise.
  */
 export function isElementVisible(element) {
   if (!element) return false;
@@ -189,10 +189,10 @@ export function isElementVisible(element) {
 }
 
 /**
- * Waits for an element to become visible.
- * @param {string[]} selectorArray - Array of CSS selectors to try
- * @param {number} timeout - Timeout in milliseconds (default: 7000)
- * @returns {Promise<Element>} Promise that resolves with the visible element
+ * Waits for an element to become visible in the viewport.
+ * @param {string[]} selectorArray - An array of CSS selectors to try.
+ * @param {number} [timeout=7000] - The timeout in milliseconds.
+ * @returns {Promise<Element>} A promise that resolves with the visible element.
  */
 export function waitForVisibleElement(selectorArray, timeout = 7000) {
   return new Promise((resolve, reject) => {

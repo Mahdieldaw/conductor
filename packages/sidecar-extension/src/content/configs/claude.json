@@ -62,6 +62,12 @@
     { "action": "wait", "ms": 500 },
     { "action": "click", "target": "sendButton" }
   ],
+  "executionStrategy": {
+    "flightTimeout": 30000,
+    "networkResponseDelay": 1000,
+    "domChangeDelay": 2000,
+    "harvestTimeout": 10000
+  },
   "harvestStrategy": {
     "method": "concurrent",
     "observeTarget": "conversationWrapper",

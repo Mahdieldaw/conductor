@@ -1,0 +1,7 @@
+{
+  "Cannot access contents of url": "Unable to access page content. Please ensure the page is loaded and the extension has permission.",
+  "Extension context invalidated": "Extension was reloaded. Please refresh the page and try again.",
+  "Could not establish connection": "Unable to connect to the page. Please ensure the page supports the extension.",
+  "The tab was closed": "The target tab was closed. Please select an active tab.",
+  "No tab with id": "The target tab is no longer available. Please select a different tab."
+}

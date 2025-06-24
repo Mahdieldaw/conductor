@@ -18,11 +18,12 @@ export function createMiddleware(middlewareFn, config = {}) {
 }
 
 /**
- * Logging middleware - Logs request details and timing
- * @param {Object} context - Request context
- * @param {Function} next - Next function in the chain
- * @param {Object} config - Middleware configuration
- * @returns {*} Result from next middleware/handler
+ * Logging middleware to log request details and timing information.
+ *
+ * @param {object} context - The request context.
+ * @param {Function} next - The next function in the middleware chain.
+ * @param {object} config - Configuration for the middleware.
+ * @returns {Promise<*>} The result from the next middleware or handler.
  */
 export async function loggingMiddleware(context, next, config = {}) {
   const { logLevel = 'info', includePayload = false } = config;
@@ -64,11 +65,12 @@ export async function loggingMiddleware(context, next, config = {}) {
 }
 
 /**
- * Metrics middleware - Collects performance and usage metrics
- * @param {Object} context - Request context
- * @param {Function} next - Next function in the chain
- * @param {Object} config - Middleware configuration
- * @returns {*} Result from next middleware/handler
+ * Metrics middleware to collect performance and usage metrics.
+ *
+ * @param {object} context - The request context.
+ * @param {Function} next - The next function in the middleware chain.
+ * @param {object} config - Configuration for the middleware.
+ * @returns {Promise<*>} The result from the next middleware or handler.
  */
 export async function metricsMiddleware(context, next, config = {}) {
   const { collectDetailedMetrics = false } = config;
@@ -117,11 +119,12 @@ export async function metricsMiddleware(context, next, config = {}) {
 }
 
 /**
- * Validation middleware - Validates message structure and payload
- * @param {Object} context - Request context
- * @param {Function} next - Next function in the chain
- * @param {Object} config - Middleware configuration containing schemas
- * @returns {*} Result from next middleware/handler
+ * Validation middleware to validate the structure and payload of a message.
+ *
+ * @param {object} context - The request context.
+ * @param {Function} next - The next function in the middleware chain.
+ * @param {object} config - Configuration for the middleware, including schemas.
+ * @returns {Promise<*>} The result from the next middleware or handler.
  */
 export async function validationMiddleware(context, next, config = {}) {
   const { schemas = {} } = config;
@@ -161,9 +164,11 @@ export async function validationMiddleware(context, next, config = {}) {
 }
 
 /**
- * Basic payload structure validation
- * @param {*} payload - The payload to validate
- * @param {Object} schema - Simple schema definition
+ * Validates the structure of a payload against a simple schema definition.
+ *
+ * @param {*} payload - The payload to validate.
+ * @param {object} schema - A schema object defining the expected structure.
+ * @throws {Error} If validation fails.
  */
 function validatePayloadStructure(payload, schema) {
   if (schema.required && (!payload || typeof payload !== 'object')) {

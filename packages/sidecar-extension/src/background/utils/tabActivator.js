@@ -1,10 +1,13 @@
 /**
- * Activates a tab if configured to do so based on provider configuration.
- * Supports both foreground activation (brings tab to front) and background activation (triggers without switching).
- * @param {number} tabId - The ID of the tab to activate
- * @param {object} config - The provider configuration object
- * @param {string} operation - The operation type ('broadcast', 'harvest', 'readiness')
- * @returns {Promise<void>}
+ * Activates a tab if the provider's configuration enables it for a specific operation.
+ * This function supports both 'foreground' activation, which brings the tab to the front,
+ * and 'background' activation, which briefly focuses the tab to trigger its logic without
+ * disrupting the user's current view.
+ *
+ * @param {number} tabId - The ID of the tab to be activated.
+ * @param {object} config - The provider's configuration object, which contains tab activation settings.
+ * @param {string} operation - The type of operation triggering the activation (e.g., 'broadcast', 'harvest').
+ * @returns {Promise<void>} A promise that resolves when the activation process is complete.
  */
 export async function activateTabIfConfigured(tabId, config, operation) {
   // Check if tab activation is configured for this provider

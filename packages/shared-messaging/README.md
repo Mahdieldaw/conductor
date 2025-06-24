@@ -26,18 +26,14 @@ This package defines the standardized message types used for communication betwe
 - `SEND_PROMPT`: Send a prompt to an AI provider
 - `GET_RESPONSE`: Retrieve AI response
 - `STREAM_RESPONSE`: Handle streaming AI responses
+- `STREAM_DONE`: Indicates a network stream harvest has completed
+- `DOM_HARVEST_DONE`: Indicates a DOM fallback harvest has completed
+- `PROMPT_ERROR`: Propagates an error from the content script during execution
 
 ### Workflow Execution
 - `EXECUTE_WORKFLOW`: Run a multi-step AI workflow
 - `WORKFLOW_STATUS`: Check workflow execution status
 - `WORKFLOW_RESULT`: Retrieve workflow results
-
-### Error Handling
-- `PROMPT_ERROR`: Reports errors during prompt processing or harvesting.
-
-### Legacy/Alternative Types
-- `FLIGHT_ID_ACK`: Acknowledges receipt of a flight ID.
-- `DOM_HARVEST_DONE`: Indicates DOM harvesting is complete (used as a fallback).
 
 ## Usage
 

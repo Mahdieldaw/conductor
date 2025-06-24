@@ -26,9 +26,9 @@ import {
   GET_FULL_HISTORY
 } from '@hybrid-thinking/messaging';
 // Legacy tab-manager removed - now using TabPool and FlightManager
-import { configManager } from './utils/config-manager.js'; // Import configManager
-import { tabPool } from './utils/tab-pool.js'; // Import new TabPool
-import { flightManager } from './utils/flight-manager.js'; // Import new FlightManager
+import { configManager } from './utils/configManager.js'; // Import configManager
+import { tabPool } from './utils/tabPool.js'; // Import new TabPool
+import { flightManager } from './utils/flightManager.js'; // Import new FlightManager
 
 // Handler for provider configuration requests
 async function getProviderConfig(message, sender) {
@@ -113,20 +113,18 @@ const router = createMessageRouter({
 
 // --- Message Listener ---
 
-chrome.runtime.onMessageExternal.addListener(async (message, sender, sendResponse) => {
-  try {
-    // Wait for all managers to be ready before processing messages
-    await Promise.all([
-      tabPool.ready,
-      flightManager.ready
-    ]);
-    
-    const response = await router.route(message, sender);
-    sendResponse(response);
-  } catch (error) {
-    console.error('[Service Worker] Error handling external message:', error);
-    sendResponse({ error: error.message });
-  }
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  // Wait for all managers to be ready before processing messages
+  Promise.all([
+    tabPool.ready,
+    flightManager.ready
+  ]).then(() => {
+    router(message, sender, sendResponse);
+  }).catch(error => {
+    console.error('[Service Worker] Error during initialization before routing:', error);
+    sendResponse({ success: false, error: { message: 'Initialization failed' } });
+  });
+
   return true; // Keep the message channel open for async response
 });
 

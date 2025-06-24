@@ -1,4 +1,3 @@
-import { getWorkerTab, releaseWorkerTab } from '../../utils/tab-pool.js';
 import { 
     BROADCAST_PROMPT, 
     STREAM_DONE, 
@@ -7,7 +6,8 @@ import {
     HARVEST_COMPLETE,
     HARVEST_RESULT
 } from '@hybrid-thinking/messaging';
-import { flightManager } from '../../utils/flight-manager.js';
+import { flightManager } from '../../utils/flightManager.js';
+import { configManager } from '../../utils/configManager.js';
 
 /**
  * Orchestrates the headless prompt execution workflow using FlightManager.
@@ -19,12 +19,14 @@ import { flightManager } from '../../utils/flight-manager.js';
  * @returns {Promise<string>} A promise that resolves with the harvested response or rejects with an error.
  */
 export default async function execute({ providerKey, prompt, sessionId, options = {} }) {
+    const config = await configManager.getConfig(providerKey);
+    const executionStrategy = config?.executionStrategy || {};
     console.log(`[Execute] Starting prompt execution for provider: ${providerKey}`);
     
     try {
         // Launch a new flight
         const flight = await flightManager.launchFlight(providerKey, prompt, {
-            timeout: options.timeout || 30000,
+            timeout: options.timeout || executionStrategy.flightTimeout || 30000,
             maxRetries: options.maxRetries || 2,
             metadata: { sessionId, ...options.metadata }
         });
@@ -77,7 +79,7 @@ export default async function execute({ providerKey, prompt, sessionId, options 
                             } catch (error) {
                                 console.warn('[Execute] Network-triggered harvest failed:', error);
                             }
-                        }, 1000);
+                        }, executionStrategy.networkResponseDelay || 1000);
                     }
                 };
                 chrome.runtime.onMessage.addListener(networkListener);
@@ -100,7 +102,7 @@ export default async function execute({ providerKey, prompt, sessionId, options 
                             } catch (error) {
                                 console.warn('[Execute] DOM-triggered harvest failed:', error);
                             }
-                        }, 2000);
+                        }, executionStrategy.domChangeDelay || 2000);
                     }
                 };
                 chrome.runtime.onMessage.addListener(domListener);
@@ -151,7 +153,7 @@ export default async function execute({ providerKey, prompt, sessionId, options 
                 const harvestTimeout = setTimeout(() => {
                     chrome.runtime.onMessage.removeListener(harvestListener);
                     reject(new Error('Harvest timeout'));
-                }, 10000);
+                }, executionStrategy.harvestTimeout || 10000);
                 
                 const harvestListener = (message, sender) => {
                     if (sender.tab?.id === tabId && 

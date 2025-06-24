@@ -4,7 +4,7 @@
  * Handles the execution of multi-step workflows with session tracking
  */
 
-import { MemoryManager } from '../../memory-manager.js';
+import { MemoryManager } from '../../utils/memoryManager.js';
 import * as promptDomain from '../prompt/index.js';
 
 const memoryManager = new MemoryManager();

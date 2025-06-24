@@ -200,7 +200,7 @@ Workflows are validated against a JSON schema to ensure correctness.
 ```bash
 pnpm test
 ```
-### Linting
+```### Linting
 ```bash
 pnpm lint
 ```

@@ -4,8 +4,10 @@ This template provides a minimal setup to get React working in Vite with HMR and
 
 Currently, two official plugins are available:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Resource Management**: A robust `TabPool` manages the lifecycle of provider tabs, handling creation, reuse, and health checks to ensure resources are always available.
+- **Request Orchestration**: The `FlightManager` tracks every prompt from initiation to completion, managing state and ensuring that even complex, multi-step workflows are executed reliably.
+- **Configuration-Driven**: All provider-specific details (like CSS selectors and URLs) are loaded from external configuration files, making the system easily extensible.
+- **Hybrid Data Harvesting**: A sophisticated `Promise.race` mechanism simultaneously attempts to harvest results via high-speed network interception and reliable DOM observation, using whichever completes first.
 
 ## Expanding the ESLint configuration
 

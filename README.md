@@ -94,31 +94,22 @@ pnpm install
 - [x] Implement parallel prompt execution and robust state management
 - [x] Add error handling and retry logic for individual providers
 
-## Phase 3: Integration & Core Reliability (Current Focus) 🔄
+## Phase 3: Resilient Core Engine (Completed) 🚀
 
-**Goal:** Achieve a fully reliable, session-aware, and robust connection from the UI to LLM tabs, with advanced error handling and session management.
+**Goal:** Overhauled the core execution engine for robustness, resilience, and performance, creating a stable substrate for all future development.
 
-- [x] Connect UI to SidecarService: Wire PromptComposer to the refactored executePrompt service.
-- [x] Implement Basic WorkflowRunner.js for single-prompt recipes.
-- [x] State Management & Result Display: UI for displaying responses.
-- [x] Implement TabSessionManager:
-  - [x] Create `tab-manager.js` for tab tracking.
-  - [x] Create `tab-session-manager.js` for per-tab session IDs using `chrome.storage.session`.
-  - [x] Integrate session reset and new chat logic (`startNewChat`) across UI, service worker, and content scripts.
-- [x] Refactor SidecarService and Service Worker:
-  - [x] Remove "always-reload" behavior.
-  - [x] Integrate getSession/resetSession logic based on UI toggle.
-  - [x] Normalize all provider responses for robust error handling.
-- [x] Build the Three-Stage Readiness Pipeline:
-  - [x] Implement `<ReadinessGate>` UI and `useReadinessFlow` hook.
-  - [x] Add service worker logic for tab readiness and recovery.
-  - [x] Add readiness-detector.js content script with login/ready markers.
+This phase implemented the **Unified Sidecar v2.0** architecture:
+- [x] **Configuration-Driven Foundation**: Decoupled all provider-specific logic (selectors, URLs) into external JSON configs.
+- [x] **Resilient Resource Management**: Replaced legacy tab managers with a robust `TabPool` for managing the lifecycle of worker tabs (creation, reuse, discovery, health checks).
+- [x] **Flight Control System**: Implemented a `FlightManager` to track every request from launch to completion, managing state and concurrency.
+- [x] **Hybrid Harvesting Orchestration**: Built a high-performance harvesting system using a `Promise.race` between high-speed network sniffing and a reliable DOM observation fallback.
 
-## Phase 4: Technical Hardening & Observability 🛡️
+## Phase 4: Technical Hardening & Observability (Current Focus) 🛡️
 
 **Goal:** Strengthen error handling, logging, and support for more providers.
 
-- [x] Harmonize error messages and implement error-classifier.js.
+- [ ] Centralize messaging constants and implement end-to-end error propagation.
+- [ ] Harmonize error messages and implement error-classifier.js.
 - [ ] Implement a logging bus for key events and step progress.
 - [ ] Surface "Step X of N" progress in UI.
 - [ ] Add support for more LLM providers (e.g., Gemini, Perplexity).
@@ -157,12 +148,11 @@ pnpm install
 
 ## Technical Implementation Notes
 
-- **Core Services:** IntentService and WorkflowRunner are being modularized for maintainability and testability.
+- **Sidecar v2.0 Engine**: The core of the extension is now a resilient, configuration-driven engine that manages resources (`TabPool`) and in-flight requests (`FlightManager`) for maximum stability.
+- **Hybrid Harvesting**: The system prioritizes high-speed network interception for harvesting results, with a seamless fallback to DOM observation, ensuring both speed and reliability.
 - **Workflow Library:** New workflow types (e.g., compare, critique) will be added as JSON contracts and tested automatically.
 - **Persistent Memory:** Session history will be stored using `chrome.storage.local` to enable advanced memory features.
 - **Observability:** Logging and step-by-step progress will be surfaced in the UI for transparency and debugging.
-- **Testing & Infrastructure:** Automated tests and error harmonization will ensure reliability across extension and web app.
-- **Metrics:** Key metrics (trust, accuracy, engagement) will be instrumented to guide product decisions.
 
 ### Shared Messaging Package
 
@@ -176,6 +166,9 @@ The `@hybrid-thinking/messaging` package exports the following message type cons
 - `GET_AVAILABLE_TABS` - List all detected LLM tabs
 - `RESET_SESSION` - Reset session for a provider/tab
 - `START_NEW_CHAT` - Trigger new chat in content script
+- `STREAM_DONE` - Indicates a network stream harvest has completed
+- `DOM_HARVEST_DONE` - Indicates a DOM fallback harvest has completed
+- `PROMPT_ERROR` - Propagates an error from the content script during execution
 
 ---
 

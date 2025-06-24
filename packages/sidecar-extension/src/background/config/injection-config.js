@@ -1,3 +1,6 @@
+/**
+ * Configuration for content script injection.
+ */
 export const INJECTION_CONFIG = {
   MAX_RETRIES: 3,
   BASE_TIMEOUT: 1000,
@@ -7,6 +10,9 @@ export const INJECTION_CONFIG = {
   PROGRESSIVE_TIMEOUT_MULTIPLIER: 1.5
 };
 
+/**
+ * Configuration for messaging between the service worker and content scripts.
+ */
 export const MESSAGE_CONFIG = {
   MAX_RETRIES: 3,
   RETRY_DELAY_BASE: 1000,

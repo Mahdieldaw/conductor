@@ -73,11 +73,12 @@ export function createMessageRouter(handlers, options = {}) {
 }
 
 /**
- * Executes the middleware chain and final handler
- * @param {Array} middleware - Array of middleware functions
- * @param {Object} context - Request context
- * @param {Function} handler - Final handler function
- * @returns {*} Result from the handler
+ * Executes a chain of middleware functions and then the final handler.
+ *
+ * @param {Function[]} middleware - An array of middleware functions to execute.
+ * @param {object} context - The request context object, passed to each middleware.
+ * @param {Function} handler - The final handler function to call after all middleware has been executed.
+ * @returns {Promise<*>} A promise that resolves with the return value of the final handler.
  */
 async function executeMiddlewareChain(middleware, context, handler) {
   let index = 0;

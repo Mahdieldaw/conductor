@@ -4,7 +4,7 @@
  * Handles requests for complete workflow session history from cold storage
  */
 
-import { MemoryManager } from '../../memory-manager.js';
+import { MemoryManager } from '../../utils/memoryManager.js';
 
 const memoryManager = new MemoryManager();
 

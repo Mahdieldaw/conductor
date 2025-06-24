@@ -4,7 +4,7 @@
  * Handles requests for workflow execution results
  */
 
-import { MemoryManager } from '../../memory-manager.js';
+import { MemoryManager } from '../../utils/memoryManager.js';
 
 const memoryManager = new MemoryManager();
 

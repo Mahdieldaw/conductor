@@ -92,5 +92,11 @@
       "scrapeMaxAttempts": 10,
       "scrapeRetryDelay": 500
     }
+  },
+  "executionStrategy": {
+    "flightTimeout": 30000,
+    "networkResponseDelay": 1000,
+    "domChangeDelay": 2000,
+    "harvestTimeout": 10000
   }
 }

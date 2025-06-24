@@ -1,7 +1,7 @@
 // TabPool Manager - Phase 2 Implementation
 // Manages the lifecycle of worker tabs with state tracking and health monitoring
 
-import { configManager } from './config-manager.js';
+import { configManager } from './configManager.js';
 import { PING } from '@hybrid-thinking/messaging';
 
 // Tab states
@@ -12,13 +12,24 @@ const TAB_STATES = {
   ERROR: 'ERROR'
 };
 
+/**
+ * Manages a pool of worker tabs for different providers.
+ * Handles tab creation, reuse, adoption, and health monitoring.
+ */
 class TabPool {
+  /**
+   * Initializes the TabPool instance.
+   */
   constructor() {
     this.tabs = new Map(); // tabId -> { tabId, providerKey, state, lastPing, url }
     this.healthCheckInterval = null;
     this.isInitialized = false;
   }
 
+  /**
+   * Initializes the tab pool manager, starting health monitoring.
+   * @returns {Promise<void>}
+   */
   async initialize() {
     if (this.isInitialized) return;
     
@@ -32,8 +43,12 @@ class TabPool {
   }
 
   /**
-   * Primary entry point for acquiring a worker tab
-   * Priority: Reuse from pool -> Discover user tab -> Create new worker
+   * Acquires a worker tab for a given provider, following a priority order:
+   * 1. Reuse an idle tab from the pool.
+   * 2. Discover and adopt a user-opened tab.
+   * 3. Create a new worker tab.
+   * @param {string} providerKey - The key of the provider (e.g., 'chatgpt').
+   * @returns {Promise<object>} A promise that resolves with the acquired tab object.
    */
   async getWorkerTab(providerKey) {
     console.log(`[TabPool] Acquiring worker tab for provider: ${providerKey}`);
@@ -62,7 +77,9 @@ class TabPool {
   }
 
   /**
-   * Find an idle tab in the pool for the given provider
+   * Finds an idle tab in the pool for a specific provider.
+   * @param {string} providerKey - The key of the provider.
+   * @returns {object|null} The idle tab object or null if not found.
    */
   findIdleTab(providerKey) {
     for (const tab of this.tabs.values()) {
@@ -74,7 +91,9 @@ class TabPool {
   }
 
   /**
-   * Scan user's open tabs for one matching the provider's URL
+   * Scans for user-opened tabs that match the provider's URL and adopts one into the pool.
+   * @param {string} providerKey - The key of the provider.
+   * @returns {Promise<object|null>} A promise that resolves with the adopted tab object or null.
    */
   async discoverAndAdoptTab(providerKey) {
     try {
@@ -115,7 +134,9 @@ class TabPool {
   }
 
   /**
-   * Create a new pinned, non-focused worker tab
+   * Creates a new, pinned, non-focused worker tab for the specified provider.
+   * @param {string} providerKey - The key of the provider.
+   * @returns {Promise<object>} A promise that resolves with the newly created tab object.
    */
   async createWorkerTab(providerKey) {
     try {
@@ -156,7 +177,11 @@ class TabPool {
   }
 
   /**
-   * Wait for a tab to be fully loaded and ready
+   * Waits for a tab to be fully loaded and responsive.
+   * @param {number} tabId - The ID of the tab to wait for.
+   * @param {number} [timeout=30000] - The maximum time to wait in milliseconds.
+   * @returns {Promise<boolean>} A promise that resolves with true if the tab becomes ready.
+   * @throws {Error} If the tab does not become ready within the timeout period.
    */
   async waitForTabReady(tabId, timeout = 30000) {
     const startTime = Date.now();
@@ -182,7 +207,9 @@ class TabPool {
   }
 
   /**
-   * Update tab state
+   * Updates the state of a tab in the pool.
+   * @param {number} tabId - The ID of the tab to update.
+   * @param {string} newState - The new state for the tab (e.g., 'IDLE', 'BUSY').
    */
   updateTabState(tabId, newState) {
     const tab = this.tabs.get(tabId);
@@ -194,7 +221,8 @@ class TabPool {
   }
 
   /**
-   * Release a tab back to idle state
+   * Releases a tab, marking it as idle and available for reuse.
+   * @param {number} tabId - The ID of the tab to release.
    */
   releaseTab(tabId) {
     const tab = this.tabs.get(tabId);
@@ -205,7 +233,9 @@ class TabPool {
   }
 
   /**
-   * Mark a tab as having an error
+   * Marks a tab as being in an error state.
+   * @param {number} tabId - The ID of the tab.
+   * @param {Error} error - The error that occurred.
    */
   markTabError(tabId, error) {
     const tab = this.tabs.get(tabId);
@@ -219,9 +249,10 @@ class TabPool {
   }
 
   /**
-   * Cleanup and remove error tabs
+   * Removes a tab from the pool and closes it.
+   * @param {number} tabId - The ID of the tab to remove.
    */
-  async cleanupErrorTab(tabId) {
+  async removeTab(tabId) {
     try {
       await chrome.tabs.remove(tabId);
       this.tabs.delete(tabId);
@@ -234,7 +265,10 @@ class TabPool {
   }
 
   /**
-   * Ping a tab to check if it's responsive
+   * Pings a tab to check if it is responsive.
+   * @param {number} tabId - The ID of the tab to ping.
+   * @param {number} [timeout=5000] - The maximum time to wait for a response.
+   * @returns {Promise<boolean>} A promise that resolves with true if the tab is responsive.
    */
   async pingTab(tabId, timeout = 5000) {
     try {
@@ -246,9 +280,10 @@ class TabPool {
   }
 
   /**
-   * Start periodic health monitoring
+   * Starts the periodic health monitoring of all tabs in the pool.
+   * @param {number} [interval=60000] - The interval in milliseconds for health checks.
    */
-  startHealthMonitoring() {
+  startHealthMonitoring(interval = 60000) {
     if (this.healthCheckInterval) return;
     
     this.healthCheckInterval = setInterval(() => {
@@ -259,9 +294,10 @@ class TabPool {
   }
 
   /**
-   * Perform health check on all tabs in pool
+   * Performs a health check on all tabs in the pool, removing unresponsive ones.
+   * @private
    */
-  async performHealthCheck() {
+  async healthCheck() {
     console.log(`[TabPool] Performing health check on ${this.tabs.size} tabs`);
     
     const healthPromises = [];
@@ -279,7 +315,9 @@ class TabPool {
   }
 
   /**
-   * Check health of a specific tab
+   * Checks the health of a specific tab.
+   * @param {number} tabId - The ID of the tab to check.
+   * @private
    */
   async checkTabHealth(tabId) {
     try {
@@ -310,7 +348,9 @@ class TabPool {
   }
 
   /**
-   * Get pool statistics
+   * Retrieves statistics about the current state of the tab pool.
+   *
+   * @returns {object} An object containing tab pool statistics.
    */
   getStats() {
     const stats = {
@@ -329,9 +369,9 @@ class TabPool {
   }
 
   /**
-   * Cleanup and shutdown
+   * Stops the health monitoring service.
    */
-  destroy() {
+  stopHealthMonitoring() {
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;

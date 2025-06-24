@@ -11,6 +11,10 @@ import {
 } from './utils/dom-utils.js';
 
 export class Provider {
+  /**
+   * Creates an instance of the Provider.
+   * @param {object} config - The configuration for the provider.
+   */
   constructor(config) { // Accepts config as argument
     if (!config) {
       throw new Error("Provider was initialized without a valid configuration.");
@@ -21,6 +25,11 @@ export class Provider {
   }
 
   // Unified broadcast method with normalized response structure and metadata
+    /**
+   * Broadcasts a prompt to the provider's website.
+   * @param {string} prompt - The prompt to broadcast.
+   * @returns {Promise<{success: boolean}>} A promise that resolves when the broadcast is complete.
+   */
   async broadcast(prompt) {
     const { platformKey, broadcastStrategy, selectors } = this.config;
     console.log(`[Sidecar Broadcast - ${platformKey}] Executing ${broadcastStrategy.length}-step strategy.`);
@@ -77,6 +86,10 @@ export class Provider {
    * Main harvest dispatcher. It reads the "method" from the JSON config
    * and delegates to the appropriate strategy. This is the public entry point.
    * Includes a 45-second final scrape fallback that triggers regardless of strategy success/failure.
+   */
+    /**
+   * Harvests the response from the provider's website.
+   * @returns {Promise<object>} A promise that resolves with the harvested content and metadata.
    */
   async harvest() {
     const { harvestStrategy, platformKey } = this.config;
@@ -154,6 +167,10 @@ export class Provider {
   /**
    * Clicks the "New Chat" button based on the configuration.
    * This is called by the session manager to reset the context.
+   */
+    /**
+   * Starts a new chat on the provider's website.
+   * @returns {Promise<{success: boolean}>} A promise that resolves when the new chat is started.
    */
   async startNewChat() {
     const { platformKey, selectors } = this.config;

@@ -14,10 +14,11 @@
   // Create the hybrid namespace
   window.hybrid = window.hybrid || {};
 
-  /**
-   * Lightweight readiness check function
-   * @param {Object} config - Provider configuration with selectors
-   * @returns {Object} Readiness status object
+    /**
+   * Checks if the page is ready for interaction.
+   *
+   * @param {object} config - The provider configuration with selectors.
+   * @returns {{success: boolean, status: string, message?: string, error?: string}} An object indicating the readiness status.
    */
   window.hybrid.checkReadiness = function(config) {
     const { selectors, platformKey, name } = config;

@@ -4,7 +4,7 @@
  * Handles requests for recent workflow sessions from the hot cache
  */
 
-import { MemoryManager } from '../../memory-manager.js';
+import { MemoryManager } from '../../utils/memoryManager.js';
 
 const memoryManager = new MemoryManager();
 

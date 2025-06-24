@@ -6,6 +6,8 @@
  * This addresses the "Harmonize error messages" goal from Phase 4.
  */
 
+import errorMessages from '../config/error-messages.json';
+
 /**
  * Error categories for consistent handling
  */
@@ -67,15 +69,8 @@ export function sanitizeErrorMessage(message) {
   sanitized = sanitized.replace(/https?:\/\/[^\s]+/g, '[URL]');
   
   // Standardize common error patterns
-  const errorMappings = {
-    'Cannot access contents of url': 'Unable to access page content. Please ensure the page is loaded and the extension has permission.',
-    'Extension context invalidated': 'Extension was reloaded. Please refresh the page and try again.',
-    'Could not establish connection': 'Unable to connect to the page. Please ensure the page supports the extension.',
-    'The tab was closed': 'The target tab was closed. Please select an active tab.',
-    'No tab with id': 'The target tab is no longer available. Please select a different tab.'
-  };
 
-  for (const [pattern, replacement] of Object.entries(errorMappings)) {
+  for (const [pattern, replacement] of Object.entries(errorMessages)) {
     if (sanitized.includes(pattern)) {
       return replacement;
     }

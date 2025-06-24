@@ -2,55 +2,54 @@
 
 This document provides guidelines for contributing to the Sidecar Extension component of the Hybrid Thinking OS project.
 
-## Architecture Overview
+## Architecture Overview (Unified Sidecar v2.0)
 
-The Sidecar Extension has been refactored into a clean, modular architecture that separates concerns and makes the codebase easier to maintain and extend.
+The Sidecar Extension is built on a resilient, configuration-driven architecture designed for stability and extensibility.
 
 ### Directory Structure
 
 ```
-src/background/
-├── core/                    # Core infrastructure components
-│   ├── message-router.js    # Central message routing system
-│   ├── error-handler.js     # Global error handling
-│   └── middleware.js        # Middleware system (logging, metrics, validation)
-├── domains/                 # Business logic organized by domain
-│   ├── prompt/             # Prompt execution and management
-│   ├── readiness/          # System readiness and recovery
-│   ├── session/            # Session management
-│   └── system/             # System utilities and health checks
-└── utils/                  # Shared utility functions
-    ├── tab-finder.js       # Tab discovery utilities
-    ├── tab-manager.js      # Tab lifecycle management
-    └── tab-session-manager.js # Session-aware tab management
+src/
+├── background/
+│   ├── core/                # Core operational logic
+│   │   ├── TabPool.js       # Manages the lifecycle of provider tabs
+│   │   ├── FlightManager.js # Tracks in-flight requests
+│   │   └── ...
+│   ├── services/            # High-level services (e.g., prompt execution)
+│   └── ...
+├── content-scripts/         # Scripts injected into provider pages
+│   ├── harvester.js         # DOM and network data harvesting
+│   └── ...
+├── providers/               # Configuration files for each LLM provider
+│   ├── chatgpt.json
+│   └── claude.json
+└── utils/                   # Shared utility functions
 ```
 
 ### Core Components
 
-#### Message Router (`core/message-router.js`)
-The central hub that routes incoming messages to appropriate domain handlers. It supports:
-- Middleware pipeline execution
-- Error handling integration
-- Async message processing
-- Request context management
+#### TabPool (`background/core/TabPool.js`)
+The `TabPool` is the backbone of resource management. It is responsible for:
+- **Creating and Reusing Tabs**: Efficiently manages a pool of provider tabs to avoid unnecessary creation.
+- **Health Checks**: Actively monitors tab health and recycles unresponsive or crashed tabs.
+- **Leasing**: Provides a mechanism to lease a healthy, ready tab for a specific operation.
 
-#### Middleware System (`core/middleware.js`)
-Provides cross-cutting concerns through a composable middleware pipeline:
-- **Logging Middleware**: Request/response logging with timing
-- **Metrics Middleware**: Performance and usage metrics collection
-- **Validation Middleware**: Message structure and payload validation
+#### FlightManager (`background/core/FlightManager.js`)
+The `FlightManager` tracks every request from initiation to completion. It:
+- **Manages State**: Keeps track of the status of each "flight" (request).
+- **Handles Concurrency**: Prevents race conditions and ensures requests are processed in an orderly fashion.
+- **Orchestrates Timeouts**: Manages request timeouts to prevent indefinite hangs.
 
-#### Error Handler (`core/error-handler.js`)
-Centralized error handling with consistent error formatting and logging.
+#### Configuration-Driven Providers (`providers/`)
+All provider-specific logic (CSS selectors, URLs, feature flags) is externalized into JSON configuration files. This allows for:
+- **Easy Updates**: Provider changes can be made without altering core application code.
+- **Extensibility**: Adding a new provider is as simple as creating a new JSON configuration file.
 
-### Domain Organization
-
-Each domain is a self-contained module that handles a specific area of functionality:
-
-- **Prompt Domain**: Handles prompt execution, broadcasting, and response harvesting
-- **Readiness Domain**: Manages system readiness checks and recovery procedures
-- **Session Domain**: Handles session lifecycle and state management
-- **System Domain**: Provides system utilities like ping and tab enumeration
+### Data Harvesting (`content-scripts/harvester.js`)
+The harvesting mechanism is a hybrid system designed for both speed and reliability:
+- **Network Sniffing**: It first attempts to capture results by intercepting network stream responses, which is extremely fast.
+- **DOM Observation**: If network sniffing fails or is not applicable, it falls back to a reliable DOM observer that watches for changes on the page.
+- **Promise.race**: These two methods are run in a `Promise.race` to ensure the fastest possible result retrieval.
 
 ## Development Guidelines
 

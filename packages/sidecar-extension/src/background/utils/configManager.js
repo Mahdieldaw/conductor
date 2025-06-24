@@ -5,7 +5,15 @@
  * Centralized configuration manager that loads, caches, and provides
  * access to provider configurations throughout the extension.
  */
+/**
+ * Manages the loading, caching, and access of provider configurations.
+ * This class ensures that configurations are loaded only once and provides
+ * convenient methods to access them from different parts of the extension.
+ */
 class ConfigManager {
+  /**
+   * Initializes a new instance of the ConfigManager.
+   */
   constructor() {
     this.configs = new Map();
     this.providerToHostnamesMap = new Map();
@@ -198,9 +206,10 @@ class ConfigManager {
   }
 
   /**
-   * Gets the harvest strategy for a provider.
-   * @param {string} providerKey - The provider key
-   * @returns {Promise<Object|null>} Harvest strategy or null if not found
+   * Retrieves the harvesting strategy for a given provider.
+   *
+   * @param {string} providerKey - The key of the provider.
+   * @returns {Promise<object|null>} A promise that resolves with the harvest strategy object, or null if not found.
    */
   async getHarvestStrategy(providerKey) {
     const config = await this.getConfig(providerKey);
@@ -208,6 +217,34 @@ class ConfigManager {
       return null;
     }
     return config.harvestStrategy;
+  }
+
+  /**
+   * Retrieves the strategy for starting a new chat for a given provider.
+   *
+   * @param {string} providerKey - The key of the provider.
+   * @returns {Promise<Array|null>} A promise that resolves with the new chat strategy, or null if not found.
+   */
+  async getNewChatStrategy(providerKey) {
+    const config = await this.getConfig(providerKey);
+    if (!config || !config.newChatStrategy) {
+      return null;
+    }
+    return config.newChatStrategy;
+  }
+
+  /**
+   * Retrieves the readiness check configuration for a given provider.
+   *
+   * @param {string} providerKey - The key of the provider.
+   * @returns {Promise<object|null>} A promise that resolves with the readiness configuration, or null if not found.
+   */
+  async getReadinessConfig(providerKey) {
+    const config = await this.getConfig(providerKey);
+    if (!config || !config.readinessCheck) {
+      return null;
+    }
+    return config.readinessCheck;
   }
 
   /**
